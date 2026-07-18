@@ -160,7 +160,15 @@ class MainWindow(QMainWindow):
         """Automatically compare the loaded roster with the chosen calendar
         and mark items that are already in it."""
         backend = get_backend(self.settings.backend_id)
-        if not self.shifts or backend.id == "ics_export":
+        if not self.shifts:
+            return
+        if not backend.can_inspect_calendar:
+            self._set_status(
+                f"{len(self.shifts)} items geladen. ⚠ Let op: in .ics export-modus "
+                f"kan de app niet controleren op dubbele items — dat gebeurt in de "
+                f"agenda-app waarin je het bestand importeert.",
+                "statusWarn",
+            )
             return
         if not self.settings.calendar_name:
             return

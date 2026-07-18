@@ -14,6 +14,7 @@ TEXT = "#E8EBF2"
 TEXT_DIM = "#8B93A7"
 DANGER = "#F26D6D"
 OK = "#4FD1A5"
+WARN = "#F5C15D"
 
 SHIFT_COLORS: dict[ShiftType, str] = {
     ShiftType.VRIJ: "#4FD1A5",
@@ -55,6 +56,23 @@ QLabel#sectionTitle {{
 QLabel#statusOk {{ color: {OK}; }}
 QLabel#statusError {{ color: {DANGER}; }}
 QLabel#statusDim {{ color: {TEXT_DIM}; }}
+QLabel#statusWarn {{ color: {WARN}; }}
+
+QFrame#warnBox {{
+    background-color: rgba(245, 193, 93, 0.10);
+    border: 1px solid rgba(245, 193, 93, 0.45);
+    border-radius: 10px;
+}}
+QFrame#warnBox QLabel {{
+    color: {WARN};
+    background: transparent;
+    border: none;
+}}
+QFrame#dangerBox {{
+    background-color: rgba(242, 109, 109, 0.08);
+    border: 1px solid rgba(242, 109, 109, 0.40);
+    border-radius: 10px;
+}}
 
 QFrame#card {{
     background-color: {CARD};
@@ -98,7 +116,7 @@ QPushButton#danger {{
 }}
 QPushButton#danger:hover {{ background-color: rgba(242, 109, 109, 0.12); }}
 
-QLineEdit, QComboBox, QSpinBox {{
+QLineEdit, QComboBox, QSpinBox, QDateEdit {{
     background-color: {BG};
     border: 1px solid {BORDER};
     border-radius: 10px;
@@ -106,7 +124,17 @@ QLineEdit, QComboBox, QSpinBox {{
     color: {TEXT};
     selection-background-color: {ACCENT};
 }}
-QLineEdit:focus, QComboBox:focus, QSpinBox:focus {{ border-color: {ACCENT}; }}
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDateEdit:focus {{ border-color: {ACCENT}; }}
+QDateEdit::drop-down {{ border: none; width: 24px; }}
+QCalendarWidget QWidget {{ background-color: {CARD}; color: {TEXT}; }}
+QCalendarWidget QAbstractItemView {{
+    background-color: {CARD};
+    selection-background-color: {ACCENT};
+    selection-color: white;
+}}
+
+QMessageBox {{ background-color: {CARD}; }}
+QMessageBox QLabel {{ color: {TEXT}; font-size: 14px; }}
 QComboBox::drop-down {{ border: none; width: 28px; }}
 QComboBox::down-arrow {{
     image: none;

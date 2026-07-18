@@ -183,3 +183,21 @@ class OutlookBackend(CalendarBackend):
         except Exception as exc:
             raise CalendarError(f"Verwijderen van dubbele items mislukt: {exc}") from exc
         return len(surplus)
+
+    # ------------------------------------------------------------------
+    def count_synced(self, calendar_name: str, start: datetime, end: datetime) -> int:
+        rows = self._scan(calendar_name, start, end)
+        return sum(1 for _t, _s, marker, _i in rows if marker)
+
+    def remove_synced(self, calendar_name: str, start: datetime, end: datetime) -> int:
+        targets = [
+            item
+            for _t, _s, marker, item in self._scan(calendar_name, start, end)
+            if marker
+        ]
+        try:
+            for item in targets:
+                item.Delete()
+        except Exception as exc:
+            raise CalendarError(f"Verwijderen van roosteritems mislukt: {exc}") from exc
+        return len(targets)
