@@ -35,6 +35,22 @@ def test_main_window_loads_roster(app, tmp_path, monkeypatch):
     assert "5 items geladen" in window.status.text()
 
 
+def test_branding_assets_present_and_loadable(app):
+    from werkrooster_sync.app import _app_icon, _make_splash
+    from werkrooster_sync.resources import asset_path
+
+    for name in ("splash.png", "logo.png", "icon.ico", "icon.icns",
+                 "icons/app-icon-512.png"):
+        assert asset_path(name).exists(), f"assets/{name} ontbreekt"
+
+    icon = _app_icon()
+    assert not icon.isNull()
+
+    splash = _make_splash(app)
+    assert splash is not None
+    assert not splash.pixmap().isNull()
+
+
 def test_settings_dialog_builds_and_saves(app, tmp_path, monkeypatch):
     import werkrooster_sync.core.settings as settings_mod
 
