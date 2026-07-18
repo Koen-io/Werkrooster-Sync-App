@@ -68,6 +68,20 @@ def test_classify_by_time_windows():
     assert classify(make_shift(datetime(2026, 7, 20, 2, 0), datetime(2026, 7, 20, 8, 0), "Dienst"), s) == ShiftType.NACHT
 
 
+def test_default_display_and_reminders():
+    """The out-of-the-box configuration: every shift type is a whole-day item
+    except loose appointments; all dienst types remind 1 hour ahead."""
+    s = Settings()
+    for t in (ShiftType.VRIJ, ShiftType.OCHTEND, ShiftType.LAAT,
+              ShiftType.NACHT, ShiftType.DIENST):
+        assert s.display_for(t) == "all_day", t
+    assert s.display_for(ShiftType.AFSPRAAK) == "timed"
+    for t in (ShiftType.OCHTEND, ShiftType.LAAT, ShiftType.NACHT, ShiftType.DIENST):
+        assert s.reminder_for(t) == 60, t
+    assert s.reminder_for(ShiftType.VRIJ) is None
+    assert s.reminder_for(ShiftType.AFSPRAAK) == 30
+
+
 def test_classify_short_item_is_afspraak():
     s = Settings()
     # 4 hours without a shift keyword: not a whole shift -> afspraak
@@ -204,12 +218,14 @@ def test_bvcm_roster_classification():
     shifts = apply_classification(parse_ics(BVCM), s)
     by_uid = {x.uid: x for x in shifts}
 
-    # Times extracted from the title; all-day becomes a real timed shift.
+    # Times extracted from the title; shown as whole-day item (default) with
+    # the real times preserved in start/end and written into the notes.
     ochtend = by_uid["bvcm-1@test"]
     assert ochtend.shift_type == ShiftType.OCHTEND
-    assert not ochtend.all_day
+    assert ochtend.all_day  # default display: whole-day at the top
     assert ochtend.start == datetime(2026, 7, 20, 7, 0)
     assert ochtend.end == datetime(2026, 7, 20, 16, 0)
+    assert "Diensttijden: 07:00–16:00" in ochtend.description
     assert ochtend.display_name == "Ochtend"  # [R] = definitief, geen suffix
 
     laat = by_uid["bvcm-2@test"]
@@ -533,6 +549,6 @@ def test_ics_export_roundtrip(tmp_path):
     assert {"Ochtend", "Laat", "Nacht", "Vrij", "Overleg team"} <= summaries
     content = backend.last_output.read_text(encoding="utf-8")
     assert "BEGIN:VALARM" in content
-    assert "TRIGGER:-PT720M" in content  # ochtend default reminder
+    assert "TRIGGER:-PT60M" in content  # dienst default reminder: 1 uur ervoor
     # The sync-ID marker travels along in the description
     assert "[WerkroosterSync:" in content
