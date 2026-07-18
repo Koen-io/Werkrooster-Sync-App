@@ -49,6 +49,7 @@ TYPE_LABELS = {
     ShiftType.NACHT: "Nachtdienst",
     ShiftType.DIENST: "Overige dienst",
     ShiftType.AFSPRAAK: "Afspraak (geen dienst)",
+    ShiftType.NEGEREN: "Negeren (niet synchroniseren)",
 }
 
 DISPLAY_OPTIONS: list[tuple[str, str]] = [
@@ -240,7 +241,8 @@ class SettingsDialog(QDialog):
         self.reminder_checks: dict[str, QCheckBox] = {}
         self.reminder_combos: dict[str, QComboBox] = {}
 
-        for row, shift_type in enumerate(ShiftType.ordered(), start=1):
+        naming_types = [t for t in ShiftType.ordered() if t != ShiftType.NEGEREN]
+        for row, shift_type in enumerate(naming_types, start=1):
             key = shift_type.value
             color = theme.SHIFT_COLORS[shift_type]
             type_lbl = QLabel(f"●  {TYPE_LABELS[shift_type]}")
@@ -312,7 +314,8 @@ class SettingsDialog(QDialog):
         intro = QLabel(
             "Zo herkent de app het soort dienst. Eerst wordt gekeken of de titel in "
             "het rooster een van deze woorden bevat; anders beslist de begintijd van "
-            "de dienst. Woorden scheiden met een komma."
+            "de dienst. Items met een 'Negeren'-woord (zoals [Rust]-blokken) komen "
+            "nooit in je agenda. Woorden scheiden met een komma."
         )
         intro.setWordWrap(True)
         intro.setObjectName("statusDim")
@@ -333,6 +336,23 @@ class SettingsDialog(QDialog):
             form.addRow(lbl, edit)
             self.keyword_edits[key] = edit
         outer.addLayout(form)
+
+        self.parse_times_check = QCheckBox(
+            "Tijden uit de titel halen (bijv. “DIENST 07:00 - 16:00” op een "
+            "hele-dag-item wordt een dienst van 07:00 tot 16:00)"
+        )
+        self.parse_times_check.setChecked(
+            bool(self.settings.rules.get("parse_times_from_title", True))
+        )
+        outer.addWidget(self.parse_times_check)
+
+        self.mark_concept_check = QCheckBox(
+            "Conceptdiensten ([C1]/[C2] in het rooster) markeren met “(concept)”"
+        )
+        self.mark_concept_check.setChecked(
+            bool(self.settings.rules.get("mark_concept", True))
+        )
+        outer.addWidget(self.mark_concept_check)
 
         time_lbl = QLabel("Begintijd-regels (als geen woord past)")
         time_lbl.setObjectName("sectionTitle")
@@ -675,6 +695,8 @@ class SettingsDialog(QDialog):
         s.include_vrij = self.include_vrij_check.isChecked()
         s.include_afspraken = self.include_afspraken_check.isChecked()
         s.rules["min_shift_hours"] = self.min_shift_spin.value()
+        s.rules["parse_times_from_title"] = self.parse_times_check.isChecked()
+        s.rules["mark_concept"] = self.mark_concept_check.isChecked()
         s.rules.setdefault("keywords", {})
         for key, edit in self.keyword_edits.items():
             s.rules["keywords"][key] = [

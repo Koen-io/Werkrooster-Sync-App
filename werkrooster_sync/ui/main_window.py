@@ -99,7 +99,7 @@ class MainWindow(QMainWindow):
 
         # Summary chips ----------------------------------------------
         self.chips_row = QHBoxLayout()
-        self.chips_row.setSpacing(8)
+        self.chips_row.setSpacing(6)
         chips_holder = QWidget()
         chips_holder.setLayout(self.chips_row)
         root.addWidget(chips_holder)
@@ -147,9 +147,11 @@ class MainWindow(QMainWindow):
         self.sync_btn.setEnabled(True)
         first = min(s.start for s in self.shifts)
         last = max(s.start for s in self.shifts)
+        ignored = sum(1 for s in self.shifts if s.shift_type == ShiftType.NEGEREN)
+        note = f", waarvan {ignored} roosterruis (grijs, wordt overgeslagen)" if ignored else ""
         self._set_status(
             f"{len(self.shifts)} items geladen "
-            f"({first:%d-%m-%Y} t/m {last:%d-%m-%Y}). "
+            f"({first:%d-%m-%Y} t/m {last:%d-%m-%Y}){note}. "
             f"Klaar om te synchroniseren.",
             "statusOk",
         )
@@ -226,7 +228,16 @@ class MainWindow(QMainWindow):
                 if s.all_day
                 else f"{day} {s.start:%d-%m-%Y}   {s.start:%H:%M}–{s.end:%H:%M}"
             )
-            if s.already_imported:
+            if s.shift_type == ShiftType.NEGEREN:
+                item = QListWidgetItem(
+                    f"{when}    {s.display_name}    —  wordt niet gesynchroniseerd"
+                )
+                item.setForeground(QColor(theme.SHIFT_COLORS[ShiftType.NEGEREN]))
+                item.setToolTip(
+                    "Dit item is herkend als roosterruis (zie Instellingen → "
+                    "Herkenning → Negeren) en komt niet in je agenda."
+                )
+            elif s.already_imported:
                 item = QListWidgetItem(
                     f"{when}    {s.display_name}    —  staat al in je agenda"
                 )

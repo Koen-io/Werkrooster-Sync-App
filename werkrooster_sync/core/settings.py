@@ -61,13 +61,27 @@ def settings_path() -> Path:
 #: if no keyword matches, by the hour its shift starts.
 DEFAULT_RULES: dict[str, Any] = {
     "keywords": {
-        ShiftType.VRIJ.value: ["vrij", "vry", "off", "rooster vrij", "roostervrij"],
+        ShiftType.VRIJ.value: [
+            "vrij",
+            "vry",
+            "roostervrij",
+            "vakantie",
+            "verlof",
+            "lfu",
+            "vr.zondag",
+            "vr.zaterdag",
+            "feestdag",
+        ],
         ShiftType.OCHTEND.value: ["ochtend", "vroeg", "morning", "early"],
         ShiftType.LAAT.value: ["laat", "avond", "late", "evening"],
         ShiftType.NACHT.value: ["nacht", "night"],
         # "dienst" is the fallback category; generic words like "dienst" must
         # not override the start-time rules, so no default keywords here.
         ShiftType.DIENST.value: [],
+        # Roster noise that should never reach the calendar. [Rust] blocks are
+        # the rest periods BVCM exports around every shift; birthdays come
+        # from Outlook's contacts calendar riding along in the export.
+        ShiftType.NEGEREN.value: ["[rust]", "verjaardag"],
     },
     # Start-hour windows [from, to) in local time, checked in this order.
     "time_windows": {
@@ -79,6 +93,14 @@ DEFAULT_RULES: dict[str, Any] = {
     # when it lasts at least this many hours; shorter items (meetings,
     # courses, …) become 'afspraak' and keep their original title.
     "min_shift_hours": 5,
+    # Roster exports (BVCM/Outlook) deliver every shift as an all-day event
+    # with the real times only in the title ("DIENST 07:00 - 16:00"). When
+    # enabled, those times are extracted and the item becomes a real timed
+    # shift; "00:00 - 24:00" keeps meaning the whole day.
+    "parse_times_from_title": True,
+    # Shifts from a concept roster ([C1]/[C2] prefix) get a " (concept)"
+    # suffix in the calendar so they are recognisable as not-yet-definitive.
+    "mark_concept": True,
 }
 
 DEFAULT_REMINDERS: dict[str, dict[str, Any]] = {
@@ -88,6 +110,7 @@ DEFAULT_REMINDERS: dict[str, dict[str, Any]] = {
     ShiftType.NACHT.value: {"enabled": True, "minutes": 240},
     ShiftType.DIENST.value: {"enabled": True, "minutes": 120},
     ShiftType.AFSPRAAK.value: {"enabled": True, "minutes": 30},
+    ShiftType.NEGEREN.value: {"enabled": False, "minutes": 0},
 }
 
 #: How each shift type appears in the calendar: "all_day" (an item at the top
@@ -99,6 +122,7 @@ DEFAULT_DISPLAY: dict[str, str] = {
     ShiftType.NACHT.value: "timed",
     ShiftType.DIENST.value: "timed",
     ShiftType.AFSPRAAK.value: "timed",
+    ShiftType.NEGEREN.value: "timed",
 }
 
 
@@ -166,7 +190,13 @@ class Settings:
         for t in ShiftType:
             s.reminders.setdefault(t.value, dict(DEFAULT_REMINDERS[t.value]))
             s.display.setdefault(t.value, DEFAULT_DISPLAY[t.value])
-        s.rules.setdefault("min_shift_hours", DEFAULT_RULES["min_shift_hours"])
+        s.rules.setdefault("keywords", {})
+        for t in ShiftType:
+            s.rules["keywords"].setdefault(
+                t.value, list(DEFAULT_RULES["keywords"].get(t.value, []))
+            )
+        for key in ("min_shift_hours", "parse_times_from_title", "mark_concept"):
+            s.rules.setdefault(key, DEFAULT_RULES[key])
         return s
 
     # ------------------------------------------------------------------

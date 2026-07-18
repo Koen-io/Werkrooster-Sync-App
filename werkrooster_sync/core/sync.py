@@ -24,7 +24,9 @@ def prepare_shifts(shifts: list[Shift], settings: Settings) -> tuple[list[Shift]
     """Split shifts into (to_sync, skipped_by_settings)."""
     to_sync, skipped = [], []
     for s in shifts:
-        if s.shift_type == ShiftType.VRIJ and not settings.include_vrij:
+        if s.shift_type == ShiftType.NEGEREN:
+            skipped.append(s)
+        elif s.shift_type == ShiftType.VRIJ and not settings.include_vrij:
             skipped.append(s)
         elif s.shift_type == ShiftType.AFSPRAAK and not settings.include_afspraken:
             skipped.append(s)
@@ -52,6 +54,9 @@ def mark_already_imported(
     key_set = set(keys)
     count = 0
     for s in shifts:
+        if s.shift_type == ShiftType.NEGEREN:
+            s.already_imported = False
+            continue
         s.already_imported = s.sync_id in ids or s.dedupe_key in key_set
         if s.already_imported:
             count += 1
