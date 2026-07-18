@@ -69,13 +69,14 @@ def test_classify_by_time_windows():
 
 
 def test_default_display_and_reminders():
-    """The out-of-the-box configuration: every shift type is a whole-day item
-    except loose appointments; all dienst types remind 1 hour ahead."""
+    """The out-of-the-box configuration: only Vrij is a whole-day item, every
+    dienst is a block at its exact times; all dienst types remind 1 hour
+    ahead."""
     s = Settings()
-    for t in (ShiftType.VRIJ, ShiftType.OCHTEND, ShiftType.LAAT,
-              ShiftType.NACHT, ShiftType.DIENST):
-        assert s.display_for(t) == "all_day", t
-    assert s.display_for(ShiftType.AFSPRAAK) == "timed"
+    assert s.display_for(ShiftType.VRIJ) == "all_day"
+    for t in (ShiftType.OCHTEND, ShiftType.LAAT, ShiftType.NACHT,
+              ShiftType.DIENST, ShiftType.AFSPRAAK):
+        assert s.display_for(t) == "timed", t
     for t in (ShiftType.OCHTEND, ShiftType.LAAT, ShiftType.NACHT, ShiftType.DIENST):
         assert s.reminder_for(t) == 60, t
     assert s.reminder_for(ShiftType.VRIJ) is None
@@ -108,6 +109,8 @@ def test_display_mode_all_day():
     result = apply_classification(shifts, s)
     assert result[0].shift_type == ShiftType.NACHT
     assert result[0].all_day is True
+    # The real times survive in the notes when shown as a whole-day item.
+    assert "Diensttijden: 23:00–07:30" in result[0].description
 
 
 def test_classify_by_keyword_beats_time():
@@ -218,14 +221,12 @@ def test_bvcm_roster_classification():
     shifts = apply_classification(parse_ics(BVCM), s)
     by_uid = {x.uid: x for x in shifts}
 
-    # Times extracted from the title; shown as whole-day item (default) with
-    # the real times preserved in start/end and written into the notes.
+    # Times extracted from the title; all-day becomes a real timed shift.
     ochtend = by_uid["bvcm-1@test"]
     assert ochtend.shift_type == ShiftType.OCHTEND
-    assert ochtend.all_day  # default display: whole-day at the top
+    assert not ochtend.all_day
     assert ochtend.start == datetime(2026, 7, 20, 7, 0)
     assert ochtend.end == datetime(2026, 7, 20, 16, 0)
-    assert "Diensttijden: 07:00–16:00" in ochtend.description
     assert ochtend.display_name == "Ochtend"  # [R] = definitief, geen suffix
 
     laat = by_uid["bvcm-2@test"]

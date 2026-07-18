@@ -147,14 +147,14 @@ DEFAULT_REMINDERS: dict[str, dict[str, Any]] = {
 }
 
 #: How each shift type appears in the calendar: "all_day" (an item at the top
-#: of the day) or "timed" (a block at the exact shift times). Everything is a
-#: whole-day item except loose appointments, which keep their exact times.
+#: of the day) or "timed" (a block at the exact shift times). Only Vrij is a
+#: whole-day item; every dienst shows as a block at its exact times.
 DEFAULT_DISPLAY: dict[str, str] = {
     ShiftType.VRIJ.value: "all_day",
-    ShiftType.OCHTEND.value: "all_day",
-    ShiftType.LAAT.value: "all_day",
-    ShiftType.NACHT.value: "all_day",
-    ShiftType.DIENST.value: "all_day",
+    ShiftType.OCHTEND.value: "timed",
+    ShiftType.LAAT.value: "timed",
+    ShiftType.NACHT.value: "timed",
+    ShiftType.DIENST.value: "timed",
     ShiftType.AFSPRAAK.value: "timed",
     ShiftType.NEGEREN.value: "timed",
 }
