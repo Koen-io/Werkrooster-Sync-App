@@ -75,6 +75,10 @@ DEFAULT_RULES: dict[str, Any] = {
         ShiftType.OCHTEND.value: [5, 12],
         ShiftType.LAAT.value: [12, 20],
     },
+    # A timed roster item without a matching keyword only counts as a shift
+    # when it lasts at least this many hours; shorter items (meetings,
+    # courses, …) become 'afspraak' and keep their original title.
+    "min_shift_hours": 5,
 }
 
 DEFAULT_REMINDERS: dict[str, dict[str, Any]] = {
@@ -83,6 +87,18 @@ DEFAULT_REMINDERS: dict[str, dict[str, Any]] = {
     ShiftType.LAAT.value: {"enabled": True, "minutes": 120},
     ShiftType.NACHT.value: {"enabled": True, "minutes": 240},
     ShiftType.DIENST.value: {"enabled": True, "minutes": 120},
+    ShiftType.AFSPRAAK.value: {"enabled": True, "minutes": 30},
+}
+
+#: How each shift type appears in the calendar: "all_day" (an item at the top
+#: of the day) or "timed" (a block at the exact shift times).
+DEFAULT_DISPLAY: dict[str, str] = {
+    ShiftType.VRIJ.value: "all_day",
+    ShiftType.OCHTEND.value: "timed",
+    ShiftType.LAAT.value: "timed",
+    ShiftType.NACHT.value: "timed",
+    ShiftType.DIENST.value: "timed",
+    ShiftType.AFSPRAAK.value: "timed",
 }
 
 
@@ -99,7 +115,8 @@ class Settings:
         default_factory=lambda: json.loads(json.dumps(DEFAULT_REMINDERS))
     )
     include_vrij: bool = True
-    vrij_as_all_day: bool = True
+    include_afspraken: bool = True
+    display: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_DISPLAY))
     rules: dict[str, Any] = field(
         default_factory=lambda: json.loads(json.dumps(DEFAULT_RULES))
     )
@@ -115,6 +132,9 @@ class Settings:
             return int(cfg.get("minutes", 0))
         return None
 
+    def display_for(self, shift_type: ShiftType) -> str:
+        return self.display.get(shift_type.value, DEFAULT_DISPLAY[shift_type.value])
+
     # ------------------------------------------------------------------
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -123,7 +143,8 @@ class Settings:
             "names": self.names,
             "reminders": self.reminders,
             "include_vrij": self.include_vrij,
-            "vrij_as_all_day": self.vrij_as_all_day,
+            "include_afspraken": self.include_afspraken,
+            "display": self.display,
             "rules": self.rules,
             "theme": self.theme,
         }
@@ -134,11 +155,18 @@ class Settings:
         for key in s.to_dict():
             if key in data and data[key] is not None:
                 setattr(s, key, data[key])
+        # Migrate the old vrij_as_all_day flag into the display map.
+        if "vrij_as_all_day" in data and "display" not in data:
+            s.display[ShiftType.VRIJ.value] = (
+                "all_day" if data["vrij_as_all_day"] else "timed"
+            )
         # Merge in any missing defaults (forward compatibility).
         for t, n in DEFAULT_NAMES.items():
             s.names.setdefault(t.value, n)
         for t in ShiftType:
             s.reminders.setdefault(t.value, dict(DEFAULT_REMINDERS[t.value]))
+            s.display.setdefault(t.value, DEFAULT_DISPLAY[t.value])
+        s.rules.setdefault("min_shift_hours", DEFAULT_RULES["min_shift_hours"])
         return s
 
     # ------------------------------------------------------------------

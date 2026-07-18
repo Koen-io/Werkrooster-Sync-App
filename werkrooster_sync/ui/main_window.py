@@ -21,9 +21,9 @@ from ..core.classifier import apply_classification
 from ..core.ics_parser import IcsParseError, parse_ics
 from ..core.models import Shift, ShiftType, SyncReport
 from ..core.settings import Settings
-from ..core.sync import sync_shifts
+from ..core.sync import mark_already_imported, sync_shifts
 from . import theme
-from .settings_dialog import SettingsDialog
+from .settings_dialog import SettingsDialog, _Worker
 from .widgets import CountChip, DropZone
 
 WEEKDAYS = ["ma", "di", "wo", "do", "vr", "za", "zo"]
@@ -148,11 +148,50 @@ class MainWindow(QMainWindow):
         first = min(s.start for s in self.shifts)
         last = max(s.start for s in self.shifts)
         self._set_status(
-            f"{len(self.shifts)} diensten geladen "
+            f"{len(self.shifts)} items geladen "
             f"({first:%d-%m-%Y} t/m {last:%d-%m-%Y}). "
             f"Klaar om te synchroniseren.",
             "statusOk",
         )
+        self._auto_check_duplicates()
+
+    # ------------------------------------------------------------------
+    def _auto_check_duplicates(self) -> None:
+        """Automatically compare the loaded roster with the chosen calendar
+        and mark items that are already in it."""
+        backend = get_backend(self.settings.backend_id)
+        if not self.shifts or backend.id == "ics_export":
+            return
+        if not self.settings.calendar_name:
+            return
+        shifts, settings = self.shifts, self.settings
+
+        self._check_worker = _Worker(
+            lambda: mark_already_imported(shifts, backend, settings), self
+        )
+
+        def on_done(count: int) -> None:
+            if shifts is not self.shifts:
+                return  # a different file was loaded meanwhile
+            self._refresh_preview()
+            if count:
+                self._set_status(
+                    f"{len(self.shifts)} items geladen, waarvan {count} al in je "
+                    f"agenda staan (rood). Die worden bij synchroniseren "
+                    f"automatisch overgeslagen.",
+                    "statusOk",
+                )
+
+        def on_fail(msg: str) -> None:
+            self._set_status(
+                f"Rooster geladen. Automatische controle op dubbele items lukte "
+                f"niet: {msg}",
+                "statusError",
+            )
+
+        self._check_worker.done.connect(on_done)
+        self._check_worker.failed.connect(on_fail)
+        self._check_worker.start()
 
     def _refresh_preview(self) -> None:
         # Chips
@@ -179,9 +218,20 @@ class MainWindow(QMainWindow):
                 if s.all_day
                 else f"{day} {s.start:%d-%m-%Y}   {s.start:%H:%M}–{s.end:%H:%M}"
             )
-            item = QListWidgetItem(f"{when}    {s.display_name}")
-            item.setToolTip(f"Origineel: {s.original_summary or '(leeg)'}")
-            item.setForeground(QColor(theme.SHIFT_COLORS[s.shift_type]))
+            if s.already_imported:
+                item = QListWidgetItem(
+                    f"{when}    {s.display_name}    —  staat al in je agenda"
+                )
+                item.setForeground(QColor(theme.DANGER))
+                item.setToolTip(
+                    "Dit item is al eerder geïmporteerd en wordt bij "
+                    "synchroniseren overgeslagen.\n"
+                    f"Origineel: {s.original_summary or '(leeg)'}"
+                )
+            else:
+                item = QListWidgetItem(f"{when}    {s.display_name}")
+                item.setForeground(QColor(theme.SHIFT_COLORS[s.shift_type]))
+                item.setToolTip(f"Origineel: {s.original_summary or '(leeg)'}")
             self.preview.addItem(item)
         self.preview.setVisible(True)
 
@@ -193,6 +243,7 @@ class MainWindow(QMainWindow):
             if self.shifts:
                 self.shifts = apply_classification(self.shifts, self.settings)
                 self._refresh_preview()
+                self._auto_check_duplicates()
             self._set_status("Instellingen opgeslagen.", "statusOk")
 
     # ------------------------------------------------------------------
@@ -228,14 +279,20 @@ class MainWindow(QMainWindow):
         parts = [f"{len(report.added)} toegevoegd"]
         if report.skipped_existing:
             parts.append(f"{len(report.skipped_existing)} stond(en) er al in")
-        if report.skipped_vrij:
-            parts.append(f"{len(report.skipped_vrij)} vrije dag(en) overgeslagen")
+        if report.skipped_by_settings:
+            parts.append(
+                f"{len(report.skipped_by_settings)} overgeslagen (instellingen)"
+            )
         summary = "Klaar: " + ", ".join(parts) + "."
         if report.errors:
             summary += " Fouten: " + " | ".join(report.errors[:3])
             self._set_status(summary, "statusError")
         else:
             self._set_status(summary + " ✓", "statusOk")
+        # Everything that was just added is now "already imported": show it.
+        for shift in report.added + report.skipped_existing:
+            shift.already_imported = True
+        self._refresh_preview()
 
     def _on_failed(self, message: str) -> None:
         self.progress_bar.setVisible(False)

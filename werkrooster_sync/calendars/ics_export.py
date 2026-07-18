@@ -14,7 +14,7 @@ import os
 import subprocess
 import sys
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from ..core.models import Shift
@@ -90,8 +90,10 @@ class IcsExportBackend(CalendarBackend):
             lines.append(f"DTSTAMP:{_fmt(now)}Z")
             if shift.all_day:
                 lines.append(f"DTSTART;VALUE=DATE:{_fmt_date(shift.start)}")
-                end = shift.end if shift.end > shift.start else shift.start
-                lines.append(f"DTEND;VALUE=DATE:{_fmt_date(end)}")
+                # An all-day DTEND is exclusive and must be at least one day
+                # after DTSTART, also for timed shifts shown as all-day items.
+                end_day = max(shift.end.date(), shift.start.date() + timedelta(days=1))
+                lines.append(f"DTEND;VALUE=DATE:{end_day.strftime('%Y%m%d')}")
             else:
                 lines.append(f"DTSTART:{_fmt(shift.start)}")
                 end = shift.end if shift.end > shift.start else shift.start

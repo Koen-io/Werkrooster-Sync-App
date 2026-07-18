@@ -7,9 +7,9 @@ does the syncing.
 from __future__ import annotations
 
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from ..core.models import Shift
+from ..core.models import Shift, extract_sync_ids
 from .base import CalendarBackend, CalendarError
 
 OL_APPOINTMENT_ITEM = 1
@@ -94,11 +94,17 @@ class OutlookBackend(CalendarBackend):
         try:
             appt = folder.Items.Add(OL_APPOINTMENT_ITEM)
             appt.Subject = shift.display_name
-            appt.Start = shift.start.strftime("%Y-%m-%d %H:%M")
             end = shift.end if shift.end > shift.start else shift.start
-            appt.End = end.strftime("%Y-%m-%d %H:%M")
             if shift.all_day:
+                # All-day items must run midnight to midnight in Outlook.
+                day = shift.start.date()
+                end_day = max(end.date(), day + timedelta(days=1))
+                appt.Start = day.strftime("%Y-%m-%d") + " 00:00"
+                appt.End = end_day.strftime("%Y-%m-%d") + " 00:00"
                 appt.AllDayEvent = True
+            else:
+                appt.Start = shift.start.strftime("%Y-%m-%d %H:%M")
+                appt.End = end.strftime("%Y-%m-%d %H:%M")
             if shift.location:
                 appt.Location = shift.location
             if shift.description:
@@ -125,40 +131,53 @@ class OutlookBackend(CalendarBackend):
         )
         return items.Restrict(restriction)
 
-    def existing_keys_list(
+    def _scan(
         self, calendar_name: str, start: datetime, end: datetime
-    ) -> list[tuple[str, str]]:
+    ) -> list[tuple[str, str, str, object]]:
+        """Rows of (title_casefold, stamp, sync_id, com_item) for the range."""
         outlook = _com()
         folder = self._folder(outlook, calendar_name)
-        keys: list[tuple[str, str]] = []
+        rows: list[tuple[str, str, str, object]] = []
         try:
             for item in self._items_in_range(folder, start, end):
                 subject = str(item.Subject or "")
                 item_start = item.Start  # pywintypes datetime
                 stamp = f"{item_start.year:04d}{item_start.month:02d}{item_start.day:02d}" \
                         f"{item_start.hour:02d}{item_start.minute:02d}"
-                keys.append((subject.strip().casefold(), stamp))
+                sync_id = ""
+                try:
+                    ids = extract_sync_ids(str(item.Body or ""))
+                    if ids:
+                        sync_id = ids[0]
+                except Exception:
+                    pass  # Body can be blocked by the Outlook security guard
+                rows.append((subject.strip().casefold(), stamp, sync_id, item))
         except Exception as exc:
             raise CalendarError(f"Kan agenda-items niet lezen uit Outlook: {exc}") from exc
-        return keys
+        return rows
+
+    def existing_keys_list(
+        self, calendar_name: str, start: datetime, end: datetime
+    ) -> list[tuple[str, str]]:
+        return [(t, s) for t, s, _m, _i in self._scan(calendar_name, start, end)]
+
+    def scan_existing(self, calendar_name: str, start: datetime, end: datetime):
+        rows = self._scan(calendar_name, start, end)
+        keys = [(t, s) for t, s, _m, _i in rows]
+        ids = {m for _t, _s, m, _i in rows if m}
+        return keys, ids
 
     # ------------------------------------------------------------------
     def remove_duplicates(self, calendar_name: str, start: datetime, end: datetime) -> int:
-        outlook = _com()
-        folder = self._folder(outlook, calendar_name)
         seen: set[tuple[str, str]] = set()
         surplus = []
+        for title, stamp, _marker, item in self._scan(calendar_name, start, end):
+            key = (title, stamp)
+            if key in seen:
+                surplus.append(item)
+            else:
+                seen.add(key)
         try:
-            for item in self._items_in_range(folder, start, end):
-                subject = str(item.Subject or "")
-                item_start = item.Start
-                stamp = f"{item_start.year:04d}{item_start.month:02d}{item_start.day:02d}" \
-                        f"{item_start.hour:02d}{item_start.minute:02d}"
-                key = (subject.strip().casefold(), stamp)
-                if key in seen:
-                    surplus.append(item)
-                else:
-                    seen.add(key)
             for item in surplus:
                 item.Delete()
         except Exception as exc:
