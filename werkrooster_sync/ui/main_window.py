@@ -138,7 +138,12 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     def load_file(self, path: str) -> None:
         try:
-            shifts = parse_ics(path)
+            if path.lower().endswith(".pdf"):
+                from ..core.pdf_parser import parse_pdf
+
+                shifts = parse_pdf(path, self.settings)
+            else:
+                shifts = parse_ics(path)
         except IcsParseError as exc:
             self._set_status(str(exc), "statusError")
             return
