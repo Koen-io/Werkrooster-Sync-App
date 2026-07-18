@@ -34,14 +34,12 @@ def test_definitief_pdf_parses_and_classifies():
     assert vrij[0].shift_type == ShiftType.VRIJ
     assert vrij[0].is_concept is False
 
-    # DIENST with times from the entry text: whole-day item (default
-    # display) with the extracted times preserved in start/end and notes
+    # DIENST with times from the entry text -> real timed shift
     dienst = by_date(shifts, 2026, 7, 20)[0]
     assert dienst.shift_type == ShiftType.OCHTEND
-    assert dienst.all_day
+    assert not dienst.all_day
     assert dienst.start == datetime(2026, 7, 20, 7, 0)
     assert dienst.end == datetime(2026, 7, 20, 16, 0)
-    assert "Diensttijden: 07:00–16:00" in dienst.description
     assert dienst.display_name == "Ochtend"  # no concept suffix
 
     # ZIEK keeps its own (time-stripped) title
