@@ -23,6 +23,7 @@ SHIFT_COLORS: dict[ShiftType, str] = {
     ShiftType.NACHT: "#8B7CF6",
     ShiftType.DIENST: "#5DA8F5",
     ShiftType.AFSPRAAK: "#5DD5C4",
+    ShiftType.NEGEREN: "#5A6275",
 }
 
 QSS = f"""

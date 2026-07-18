@@ -106,7 +106,9 @@ def test_classify_by_keyword_beats_time():
 def test_classify_vrij_keyword_and_all_day():
     s = Settings()
     assert classify(make_shift(datetime(2026, 7, 20, 9, 0), datetime(2026, 7, 20, 10, 0), "Vrij"), s) == ShiftType.VRIJ
-    assert classify(make_shift(datetime(2026, 7, 20), datetime(2026, 7, 21), "", all_day=True), s) == ShiftType.VRIJ
+    # An all-day item without any keyword (e.g. a birthday from another
+    # calendar riding along in the export) is an appointment, not a free day.
+    assert classify(make_shift(datetime(2026, 7, 20), datetime(2026, 7, 21), "Teamdag", all_day=True), s) == ShiftType.AFSPRAAK
 
 
 def test_apply_classification_sets_names_and_reminders():
@@ -134,6 +136,80 @@ def test_sample_roster_classification():
     # Re-importing the same file yields identical sync-IDs.
     again = apply_classification(parse_ics(SAMPLE), s)
     assert [x.sync_id for x in shifts] == [x.sync_id for x in again]
+
+
+# ----------------------------------------------------------------------
+# BVCM/Outlook-style roster (all-day events, times in the title)
+# ----------------------------------------------------------------------
+BVCM = Path(__file__).parent / "sample_bvcm.ics"
+
+
+def test_bvcm_roster_classification():
+    s = Settings()
+    shifts = apply_classification(parse_ics(BVCM), s)
+    by_uid = {x.uid: x for x in shifts}
+
+    # Times extracted from the title; all-day becomes a real timed shift.
+    ochtend = by_uid["bvcm-1@test"]
+    assert ochtend.shift_type == ShiftType.OCHTEND
+    assert not ochtend.all_day
+    assert ochtend.start == datetime(2026, 7, 20, 7, 0)
+    assert ochtend.end == datetime(2026, 7, 20, 16, 0)
+    assert ochtend.display_name == "Ochtend"  # [R] = definitief, geen suffix
+
+    laat = by_uid["bvcm-2@test"]
+    assert laat.shift_type == ShiftType.LAAT
+    assert laat.display_name == "Laat (concept)"  # [C1]
+
+    # Night shift wraps past midnight.
+    nacht = by_uid["bvcm-3@test"]
+    assert nacht.shift_type == ShiftType.NACHT
+    assert nacht.start == datetime(2026, 7, 22, 23, 0)
+    assert nacht.end == datetime(2026, 7, 23, 7, 30)
+
+    # [Rust] blocks and birthdays are roster noise.
+    assert by_uid["bvcm-4@test"].shift_type == ShiftType.NEGEREN
+    assert by_uid["bvcm-8@test"].shift_type == ShiftType.NEGEREN
+
+    # "00:00 - 24:00" stays a whole day; VRIJ/Vakantie/LFU are all vrij.
+    vrij = by_uid["bvcm-5@test"]
+    assert vrij.shift_type == ShiftType.VRIJ
+    assert vrij.all_day
+    assert by_uid["bvcm-6@test"].shift_type == ShiftType.VRIJ
+    assert by_uid["bvcm-7@test"].shift_type == ShiftType.VRIJ
+
+    # A short timed meeting stays an appointment with its own title.
+    briefing = by_uid["bvcm-9@test"]
+    assert briefing.shift_type == ShiftType.AFSPRAAK
+    assert briefing.display_name == "Briefing PALV"
+
+
+def test_negeren_never_syncs():
+    s = Settings()
+    s.calendar_name = "Werk"
+    shifts = apply_classification(parse_ics(BVCM), s)
+    backend = FakeBackend()
+    report = sync_shifts(shifts, backend, s)
+    assert report.ok
+    synced_titles = {x.display_name for x in report.added}
+    assert not any("Rust" in t or "Verjaardag" in t for t in synced_titles)
+    assert {x.shift_type for x in report.skipped_by_settings} == {ShiftType.NEGEREN}
+
+
+def test_time_extraction_can_be_disabled():
+    s = Settings()
+    s.rules["parse_times_from_title"] = False
+    shifts = apply_classification(parse_ics(BVCM), s)
+    dienst = next(x for x in shifts if x.uid == "bvcm-1@test")
+    assert dienst.all_day  # untouched
+
+
+def test_sync_id_stable_across_time_extraction_setting():
+    s1, s2 = Settings(), Settings()
+    s2.rules["parse_times_from_title"] = False
+    ids1 = [x.sync_id for x in apply_classification(parse_ics(BVCM), s1)]
+    ids2 = [x.sync_id for x in apply_classification(parse_ics(BVCM), s2)]
+    assert ids1 == ids2
 
 
 # ----------------------------------------------------------------------

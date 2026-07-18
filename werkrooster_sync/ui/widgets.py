@@ -116,17 +116,17 @@ class CountChip(QLabel):
     def __init__(self, shift_type: ShiftType, name: str, count: int, parent=None):
         super().__init__(parent)
         color = theme.SHIFT_COLORS[shift_type]
-        self.setText(f"●  {name}  ×{count}")
+        self.setText(f"● {name} ×{count}")
         self.setStyleSheet(
             f"""
             QLabel {{
                 color: {color};
                 background-color: {theme.CARD};
                 border: 1px solid {theme.BORDER};
-                border-radius: 13px;
-                padding: 5px 14px;
+                border-radius: 12px;
+                padding: 4px 9px;
                 font-weight: 600;
-                font-size: 13px;
+                font-size: 12px;
             }}
             """
         )

@@ -19,10 +19,20 @@ class ShiftType(str, Enum):
     NACHT = "nacht"
     DIENST = "dienst"
     AFSPRAAK = "afspraak"
+    #: Roster noise that should never reach the calendar (e.g. [Rust] blocks).
+    NEGEREN = "negeren"
 
     @classmethod
     def ordered(cls) -> list["ShiftType"]:
-        return [cls.VRIJ, cls.OCHTEND, cls.LAAT, cls.NACHT, cls.DIENST, cls.AFSPRAAK]
+        return [
+            cls.VRIJ,
+            cls.OCHTEND,
+            cls.LAAT,
+            cls.NACHT,
+            cls.DIENST,
+            cls.AFSPRAAK,
+            cls.NEGEREN,
+        ]
 
 
 #: Default display names for calendar items, per shift type.
@@ -35,6 +45,7 @@ DEFAULT_NAMES: dict[ShiftType, str] = {
     ShiftType.NACHT: "Nacht",
     ShiftType.DIENST: "Dienst",
     ShiftType.AFSPRAAK: "Afspraak",
+    ShiftType.NEGEREN: "Genegeerd",
 }
 
 
@@ -52,8 +63,11 @@ MARKER_RE = re.compile(r"\[WerkroosterSync:([0-9a-f]{12})\]")
 
 
 def make_sync_id(uid: str, summary: str, start: datetime, end: datetime) -> str:
-    basis = uid.strip() or f"{summary.strip().casefold()}|{end:%Y%m%d%H%M}"
-    raw = f"{basis}|{start:%Y%m%d%H%M}"
+    # Deliberately date-based (not time-based): roster exports hide the real
+    # times in the title, and extracting those is a setting — the ID must not
+    # change when that setting changes.
+    basis = uid.strip() or summary.strip().casefold()
+    raw = f"{basis}|{start:%Y%m%d}"
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
 
 
