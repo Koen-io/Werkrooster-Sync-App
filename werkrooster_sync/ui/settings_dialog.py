@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QSizePolicy,
     QSpinBox,
     QTabWidget,
     QVBoxLayout,
@@ -26,7 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..calendars.base import CalendarError
-from ..calendars.registry import all_backends, get_backend
+from ..calendars.registry import get_backend
 from ..core.models import ShiftType
 from ..core.settings import Settings
 from ..core.sync import find_duplicates
@@ -50,13 +49,13 @@ TYPE_LABELS = {
     ShiftType.LAAT: "Late dienst",
     ShiftType.NACHT: "Nachtdienst",
     ShiftType.DIENST: "Overige dienst",
-    ShiftType.AFSPRAAK: "Afspraak (geen dienst)",
+    ShiftType.AFSPRAAK: "Afspraak",
     ShiftType.NEGEREN: "Negeren (niet synchroniseren)",
 }
 
 DISPLAY_OPTIONS: list[tuple[str, str]] = [
     ("Exacte tijden", "timed"),
-    ("Hele dag (bovenaan)", "all_day"),
+    ("Hele dag", "all_day"),
 ]
 
 
@@ -99,7 +98,6 @@ class SettingsPanel(QWidget):
         layout.addWidget(title)
 
         tabs = QTabWidget()
-        tabs.addTab(self._build_calendar_tab(), "Agenda")
         tabs.addTab(self._build_naming_tab(), "Namen && herinneringen")
         tabs.addTab(self._build_rules_tab(), "Herkenning")
         tabs.addTab(self._build_maintenance_tab(), "Onderhoud")
@@ -118,113 +116,9 @@ class SettingsPanel(QWidget):
         layout.addLayout(buttons)
 
     # ------------------------------------------------------------------
-    def _build_calendar_tab(self) -> QWidget:
-        w = QWidget()
-        form = QVBoxLayout(w)
-        form.setContentsMargins(18, 18, 18, 18)
-        form.setSpacing(12)
-
-        intro = QLabel(
-            "Kies waar je rooster naartoe gesynchroniseerd wordt. Op een Mac is dat "
-            "Apple Agenda, op Windows Microsoft Outlook. Werkt je agenda-app niet "
-            "rechtstreeks? Kies dan “.ics export”: het rooster wordt dan als bestand "
-            "klaargezet en geopend in je standaard agenda-app."
-        )
-        intro.setWordWrap(True)
-        intro.setObjectName("statusDim")
-        form.addWidget(intro)
-
-        self.backend_combo = QComboBox()
-        self._backends = all_backends()
-        for b in self._backends:
-            self.backend_combo.addItem(b.label, b.id)
-        idx = self.backend_combo.findData(self.settings.backend_id)
-        if idx >= 0:
-            self.backend_combo.setCurrentIndex(idx)
-        self.backend_combo.currentIndexChanged.connect(self._load_calendars)
-
-        self.calendar_combo = QComboBox()
-        self.calendar_combo.setEditable(False)
-        refresh = QPushButton("Ververs lijst")
-        refresh.clicked.connect(self._load_calendars)
-
-        # Both dropdowns grow to the full available width; the Ververs button
-        # keeps its natural size next to the calendar dropdown.
-        for combo in (self.backend_combo, self.calendar_combo):
-            combo.setSizePolicy(
-                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
-            )
-            combo.setMinimumWidth(320)
-
-        cal_row = QHBoxLayout()
-        cal_row.addWidget(self.calendar_combo, stretch=1)
-        cal_row.addWidget(refresh)
-
-        f = QFormLayout()
-        f.setSpacing(12)
-        f.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        f.addRow("Agenda-app:", self.backend_combo)
-        f.addRow("Agenda:", cal_row)
-        form.addLayout(f)
-
-        self.export_warn = QFrame()
-        self.export_warn.setObjectName("warnBox")
-        warn_layout = QHBoxLayout(self.export_warn)
-        warn_layout.setContentsMargins(14, 10, 14, 10)
-        warn_icon = QLabel("⚠")
-        warn_icon.setStyleSheet("font-size: 18px;")
-        warn_text = QLabel(
-            "Let op: in .ics export-modus kan de app je agenda niet inzien. "
-            "Controle op dubbele items is dan niet mogelijk — dat moet gebeuren "
-            "in de agenda-app waarin je het bestand importeert."
-        )
-        warn_text.setWordWrap(True)
-        warn_layout.addWidget(warn_icon, alignment=Qt.AlignmentFlag.AlignTop)
-        warn_layout.addWidget(warn_text, stretch=1)
-        form.addWidget(self.export_warn)
-
-        self.calendar_status = QLabel("")
-        self.calendar_status.setObjectName("statusDim")
-        self.calendar_status.setWordWrap(True)
-        form.addWidget(self.calendar_status)
-        form.addStretch()
-
-        if self.settings.calendar_name:
-            self.calendar_combo.addItem(self.settings.calendar_name)
-        self.backend_combo.currentIndexChanged.connect(self._update_export_warning)
-        self._update_export_warning()
-        self._load_calendars()
-        return w
-
     def _selected_backend(self):
-        return get_backend(self.backend_combo.currentData())
-
-    def _update_export_warning(self):
-        self.export_warn.setVisible(not self._selected_backend().can_inspect_calendar)
-
-    def _load_calendars(self):
-        backend = get_backend(self.backend_combo.currentData())
-        self.calendar_status.setText("Agenda's ophalen…")
-        current = self.calendar_combo.currentText() or self.settings.calendar_name
-
-        def fetch():
-            return backend.list_calendars()
-
-        self._worker = _Worker(fetch, self)
-
-        def on_done(names):
-            self.calendar_combo.clear()
-            self.calendar_combo.addItems(names)
-            if current in names:
-                self.calendar_combo.setCurrentText(current)
-            self.calendar_status.setText(f"{len(names)} agenda('s) gevonden.")
-
-        def on_fail(msg):
-            self.calendar_status.setText(msg)
-
-        self._worker.done.connect(on_done)
-        self._worker.failed.connect(on_fail)
-        self._worker.start()
+        """The backend chosen in Stap 1 of the main window."""
+        return get_backend(self.settings.backend_id)
 
     # ------------------------------------------------------------------
     def _build_naming_tab(self) -> QWidget:
@@ -246,6 +140,9 @@ class SettingsPanel(QWidget):
         grid = QGridLayout()
         grid.setHorizontalSpacing(12)
         grid.setVerticalSpacing(10)
+        # Keep the aligned, compact layout of the original design even in a
+        # wide window: fixed-ish field widths plus a stretch column at the end.
+        grid.setColumnStretch(5, 1)
         for col, header in enumerate(
             ["Soort", "Naam in agenda", "Weergave", "Herinnering", ""]
         ):
@@ -267,6 +164,7 @@ class SettingsPanel(QWidget):
 
             name_edit = QLineEdit(self.settings.names.get(key, ""))
             name_edit.setPlaceholderText(TYPE_LABELS[shift_type])
+            name_edit.setFixedWidth(220)
             if shift_type == ShiftType.AFSPRAAK:
                 name_edit.setText("")
                 name_edit.setPlaceholderText("eigen titel uit rooster")
@@ -276,6 +174,7 @@ class SettingsPanel(QWidget):
                 )
 
             display_combo = QComboBox()
+            display_combo.setFixedWidth(190)
             for label, value in DISPLAY_OPTIONS:
                 display_combo.addItem(label, value)
             didx = display_combo.findData(
@@ -288,6 +187,7 @@ class SettingsPanel(QWidget):
             check.setChecked(bool(cfg.get("enabled")))
 
             combo = QComboBox()
+            combo.setFixedWidth(190)
             for label, minutes in REMINDER_PRESETS:
                 combo.addItem(label, minutes)
             idx = combo.findData(int(cfg.get("minutes", 0)))
@@ -532,9 +432,8 @@ class SettingsPanel(QWidget):
         return False
 
     def _current_selection(self):
-        backend = get_backend(self.backend_combo.currentData())
+        backend = self._selected_backend()
         snapshot = Settings.from_dict(self.settings.to_dict())
-        snapshot.calendar_name = self.calendar_combo.currentText()
         return backend, snapshot
 
     def _check_duplicates(self):
@@ -710,8 +609,6 @@ class SettingsPanel(QWidget):
     # ------------------------------------------------------------------
     def _save(self):
         s = self.settings
-        s.backend_id = self.backend_combo.currentData() or ""
-        s.calendar_name = self.calendar_combo.currentText()
         for key, edit in self.name_edits.items():
             if edit.isEnabled() and edit.text().strip():
                 s.names[key] = edit.text().strip()

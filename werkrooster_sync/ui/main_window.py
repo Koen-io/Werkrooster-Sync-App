@@ -4,6 +4,9 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QComboBox,
+    QFormLayout,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -11,13 +14,14 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QProgressBar,
     QPushButton,
+    QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from ..calendars.base import CalendarError
-from ..calendars.registry import get_backend
+from ..calendars.registry import all_backends, get_backend
 from ..core.classifier import apply_classification
 from ..core.ics_parser import IcsParseError, parse_ics
 from ..core.models import Shift, ShiftType, SyncReport
@@ -25,7 +29,7 @@ from ..core.settings import Settings
 from ..core.sync import mark_already_imported, sync_shifts
 from . import theme
 from .settings_dialog import SettingsPanel, _Worker
-from .widgets import CountChip, DropZone
+from .widgets import CountChip, DropZone, StepHeader
 
 WEEKDAYS = ["ma", "di", "wo", "do", "vr", "za", "zo"]
 
@@ -82,7 +86,7 @@ class MainWindow(QMainWindow):
         title_box.setSpacing(2)
         title = QLabel("Werkrooster Sync")
         title.setObjectName("appTitle")
-        subtitle = QLabel("Zet je rooster in één klik in je agenda")
+        subtitle = QLabel("Zet je rooster in drie stappen in je agenda")
         subtitle.setObjectName("appSubtitle")
         title_box.addWidget(title)
         title_box.addWidget(subtitle)
@@ -96,7 +100,52 @@ class MainWindow(QMainWindow):
         header.addWidget(settings_btn, alignment=Qt.AlignmentFlag.AlignTop)
         root.addLayout(header)
 
-        # Drop zone ---------------------------------------------------
+        # Stap 1: agenda kiezen --------------------------------------
+        root.addWidget(StepHeader(1, "Kies je agenda"))
+        step1 = QFrame()
+        step1.setObjectName("card")
+        s1 = QFormLayout(step1)
+        s1.setContentsMargins(18, 14, 18, 14)
+        s1.setSpacing(10)
+        s1.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+
+        self.backend_combo = QComboBox()
+        self._backends = all_backends()
+        for b in self._backends:
+            self.backend_combo.addItem(b.label, b.id)
+        idx = self.backend_combo.findData(
+            self.settings.backend_id or self._backends[0].id
+        )
+        if idx >= 0:
+            self.backend_combo.setCurrentIndex(idx)
+
+        self.calendar_combo = QComboBox()
+        if self.settings.calendar_name:
+            self.calendar_combo.addItem(self.settings.calendar_name)
+        refresh_btn = QPushButton("Ververs")
+        refresh_btn.clicked.connect(self._load_calendars)
+        for combo in (self.backend_combo, self.calendar_combo):
+            combo.setSizePolicy(
+                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+            )
+        cal_row = QHBoxLayout()
+        cal_row.addWidget(self.calendar_combo, stretch=1)
+        cal_row.addWidget(refresh_btn)
+
+        s1.addRow("Agenda-app:", self.backend_combo)
+        s1.addRow("Agenda:", cal_row)
+        self.agenda_status = QLabel("")
+        self.agenda_status.setObjectName("statusDim")
+        self.agenda_status.setWordWrap(True)
+        s1.addRow("", self.agenda_status)
+        root.addWidget(step1)
+
+        self._loading_calendars = False
+        self.backend_combo.currentIndexChanged.connect(self._on_backend_changed)
+        self.calendar_combo.currentIndexChanged.connect(self._on_calendar_changed)
+
+        # Stap 2: rooster kiezen -------------------------------------
+        root.addWidget(StepHeader(2, "Sleep je rooster hierheen"))
         self.drop_zone = DropZone()
         self.drop_zone.file_selected.connect(self.load_file)
         root.addWidget(self.drop_zone)
@@ -111,10 +160,11 @@ class MainWindow(QMainWindow):
         # Preview list ------------------------------------------------
         self.preview = QListWidget()
         self.preview.setVisible(False)
-        self.preview.setMinimumHeight(180)
+        self.preview.setMinimumHeight(160)
         root.addWidget(self.preview, stretch=1)
 
-        # Progress + status ------------------------------------------
+        # Stap 3: synchroniseren -------------------------------------
+        root.addWidget(StepHeader(3, "Synchroniseer"))
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
         self.progress_bar.setTextVisible(False)
@@ -125,13 +175,67 @@ class MainWindow(QMainWindow):
         self.status.setWordWrap(True)
         root.addWidget(self.status)
 
-        # Big action button ------------------------------------------
         self.sync_btn = QPushButton("Synchroniseer naar agenda")
         self.sync_btn.setObjectName("primary")
         self.sync_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.sync_btn.setEnabled(False)
         self.sync_btn.clicked.connect(self.start_sync)
         root.addWidget(self.sync_btn)
+
+        self._load_calendars()
+
+    # ------------------------------------------------------------------
+    # Stap 1: agenda selection (auto-saved on every change)
+    # ------------------------------------------------------------------
+    def _on_backend_changed(self) -> None:
+        self.settings.backend_id = self.backend_combo.currentData() or ""
+        self.settings.save()
+        self._load_calendars()
+
+    def _on_calendar_changed(self) -> None:
+        if self._loading_calendars:
+            return
+        self.settings.calendar_name = self.calendar_combo.currentText()
+        self.settings.save()
+        if self.shifts:
+            self._auto_check_duplicates()
+
+    def _load_calendars(self) -> None:
+        backend = get_backend(self.backend_combo.currentData())
+        if not backend.can_inspect_calendar:
+            self.agenda_status.setObjectName("statusWarn")
+            self.agenda_status.setText(
+                "⚠  In .ics export-modus kan de app je agenda niet inzien; je "
+                "agenda-app controleert zelf op dubbele items bij het importeren."
+            )
+            self.agenda_status.style().polish(self.agenda_status)
+
+        current = self.calendar_combo.currentText() or self.settings.calendar_name
+        self._cal_worker = _Worker(backend.list_calendars, self)
+
+        def on_done(names: list) -> None:
+            self._loading_calendars = True
+            self.calendar_combo.clear()
+            self.calendar_combo.addItems(names)
+            self._loading_calendars = False
+            if current in names:
+                self.calendar_combo.setCurrentText(current)
+            else:
+                self._on_calendar_changed()
+            if backend.can_inspect_calendar:
+                self.agenda_status.setObjectName("statusDim")
+                self.agenda_status.setText(f"{len(names)} agenda('s) gevonden.")
+                self.agenda_status.style().polish(self.agenda_status)
+
+        def on_fail(msg: str) -> None:
+            if backend.can_inspect_calendar:
+                self.agenda_status.setObjectName("statusError")
+                self.agenda_status.setText(msg)
+                self.agenda_status.style().polish(self.agenda_status)
+
+        self._cal_worker.done.connect(on_done)
+        self._cal_worker.failed.connect(on_fail)
+        self._cal_worker.start()
 
     # ------------------------------------------------------------------
     def _set_status(self, text: str, kind: str = "statusDim") -> None:

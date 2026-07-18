@@ -8,8 +8,10 @@ from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
+    QHBoxLayout,
     QLabel,
     QVBoxLayout,
+    QWidget,
 )
 
 from ..core.models import ShiftType
@@ -111,6 +113,41 @@ def badge_html(shift_type: ShiftType, name: str) -> str:
         f'<span style="color:{color}; font-weight:700;">●</span>'
         f'&nbsp;<b>{name}</b>'
     )
+
+
+class StepHeader(QWidget):
+    """'Stap N' header: accent circle with the number + bold title."""
+
+    def __init__(self, number: int, title: str, parent=None):
+        super().__init__(parent)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(12)
+
+        badge = QLabel(str(number))
+        badge.setFixedSize(30, 30)
+        badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        badge.setStyleSheet(
+            f"""
+            QLabel {{
+                background-color: {theme.ACCENT};
+                color: white;
+                border-radius: 15px;
+                font-size: 15px;
+                font-weight: 800;
+            }}
+            """
+        )
+
+        text = QLabel(title)
+        text.setStyleSheet(
+            f"font-size: 16px; font-weight: 700; color: {theme.TEXT};"
+            "background: transparent; border: none;"
+        )
+
+        row.addWidget(badge)
+        row.addWidget(text)
+        row.addStretch()
 
 
 class CountChip(QLabel):
