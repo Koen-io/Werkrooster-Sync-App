@@ -9,19 +9,23 @@ The pipeline per item:
    title and the item becomes a real timed shift ("00:00 - 24:00" keeps
    meaning the whole day). An end time before the start time wraps to the
    next day (night shifts).
-1. **Negeren keywords** — items like ``[Rust]`` blocks (the rest periods the
-   roster exports around every shift) and birthday events are flagged and
-   never synced.
-2. **Keywords** — a configured keyword in the title decides the shift type.
-   Vrij keywords (vrij, vakantie, verlof, lfu, …) are checked first.
-3. **All-day** items without any keyword are treated as regular all-day
+1. **Keywords** — a configured keyword in the title decides the category;
+   the longest matching keyword wins across all categories (so the specific
+   dienst-code "bver_quara" beats the shorter verlof-keyword "bver").
+   Negeren keywords ([Rust], pauze, verjaardag) drop roster noise; vrij
+   keywords cover all BVCM verlof registrations (vakantie, verlof, lfu,
+   zorg, rver, geb_verl, …); afspraak keywords (ziek, consig, cursus, …)
+   keep their own title.
+2. **All-day** items without any keyword are treated as regular all-day
    appointments (afspraak) that keep their own title.
-4. **Duration** — a timed item without a keyword shorter than
+3. **Duration** — a timed item without a keyword shorter than
    ``min_shift_hours`` (default 5) is not a whole shift: it becomes an
    *afspraak* at its exact times.
-5. **Start-hour windows** — otherwise the start hour decides: nacht
+4. **Start-hour windows** — otherwise the start hour decides: nacht
    (20:00–04:59), ochtend (05:00–11:59), laat (12:00–19:59) by default.
-6. Anything left becomes *dienst*.
+   Dienst-codes (A5.x, A6.x, …) deliberately have no keywords: their name
+   should come from the start time.
+5. Anything left becomes *dienst*.
 
 Shifts from a concept roster (``[C1]``/``[C2]`` title prefix) optionally get
 a " (concept)" suffix on their calendar name.
@@ -39,11 +43,6 @@ _TIME_RANGE_RE = re.compile(
     r"(\d{1,2})[:.](\d{2})\s*[-–—]\s*(\d{1,2})[:.](\d{2})"
 )
 _CONCEPT_RE = re.compile(r"^\s*\[c\d+\]", re.IGNORECASE)
-
-
-def _keyword_match(summary: str, keywords: list[str]) -> bool:
-    s = summary.casefold()
-    return any(k.casefold() in s for k in keywords if k.strip())
 
 
 def extract_summary_times(shift: Shift, settings: Settings) -> None:
@@ -69,25 +68,42 @@ def extract_summary_times(shift: Shift, settings: Settings) -> None:
     shift.start, shift.end, shift.all_day = start, end, False
 
 
+#: Category order used to break ties between equally long keywords.
+_KEYWORD_PRIORITY = (
+    ShiftType.NEGEREN,
+    ShiftType.VRIJ,
+    ShiftType.OCHTEND,
+    ShiftType.LAAT,
+    ShiftType.NACHT,
+    ShiftType.DIENST,
+    ShiftType.AFSPRAAK,  # e.g. "ziek": keeps its own title
+)
+
+
+def _keyword_category(summary: str, keywords: dict) -> ShiftType | None:
+    """The category whose keyword matches the summary.
+
+    The *longest* matching keyword wins across all categories, so a specific
+    code like "bver_quara" (dienst) beats the shorter verlof-keyword "bver".
+    Ties fall back to the category order above.
+    """
+    s = summary.casefold()
+    best_len, best_type = 0, None
+    for t in _KEYWORD_PRIORITY:
+        for k in keywords.get(t.value, []):
+            k = k.strip().casefold()
+            if k and k in s and len(k) > best_len:
+                best_len, best_type = len(k), t
+    return best_type
+
+
 def classify(shift: Shift, settings: Settings) -> ShiftType:
     """Determine the shift type for a single roster item."""
     keywords = settings.rules.get("keywords", {})
 
-    if _keyword_match(shift.original_summary, keywords.get(ShiftType.NEGEREN.value, [])):
-        return ShiftType.NEGEREN
-
-    if _keyword_match(shift.original_summary, keywords.get(ShiftType.VRIJ.value, [])):
-        return ShiftType.VRIJ
-
-    for t in (
-        ShiftType.OCHTEND,
-        ShiftType.LAAT,
-        ShiftType.NACHT,
-        ShiftType.DIENST,
-        ShiftType.AFSPRAAK,  # e.g. "ziek": keeps its own title
-    ):
-        if _keyword_match(shift.original_summary, keywords.get(t.value, [])):
-            return t
+    matched = _keyword_category(shift.original_summary, keywords)
+    if matched is not None:
+        return matched
 
     if shift.all_day:
         # No keyword and genuinely a whole day: an ordinary all-day

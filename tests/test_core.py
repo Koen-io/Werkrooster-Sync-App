@@ -138,6 +138,61 @@ def test_sample_roster_classification():
     assert [x.sync_id for x in shifts] == [x.sync_id for x in again]
 
 
+def test_bvcm_leave_codes_classify_as_vrij():
+    s = Settings()
+    for code in ["GEB_VERL", "ZORG", "RVER", "CALA", "ONB_VERL", "ZWAV",
+                 "STUDIE", "BVER", "BV_SPORTD", "CAOCOMP", "UITDETA",
+                 "BLOK_OPNLL", "VERLOF", "LFU"]:
+        shift = make_shift(
+            datetime(2026, 8, 3), datetime(2026, 8, 4),
+            f"{code} 10:00-17:36", all_day=True,
+        )
+        result = apply_classification([shift], s)[0]
+        assert result.shift_type == ShiftType.VRIJ, f"{code} -> {result.shift_type}"
+
+
+def test_bvcm_quarantaine_is_dienst_despite_bver_prefix():
+    s = Settings()
+    shift = make_shift(
+        datetime(2026, 8, 3), datetime(2026, 8, 4),
+        "BVER_QUARA 22:00-07:00", all_day=True,
+    )
+    result = apply_classification([shift], s)[0]
+    # Longest keyword wins: "bver_quara" (dienst) beats "bver" (vrij).
+    assert result.shift_type == ShiftType.DIENST
+
+
+def test_bvcm_pauze_is_noise_and_consig_keeps_title():
+    s = Settings()
+    pauze, pauze_bet, consig = apply_classification([
+        make_shift(datetime(2026, 8, 3, 12, 0), datetime(2026, 8, 3, 12, 30), "Pauze"),
+        make_shift(datetime(2026, 8, 3, 15, 0), datetime(2026, 8, 3, 15, 30), "Pauze_bet"),
+        make_shift(datetime(2026, 8, 4), datetime(2026, 8, 5), "CONSIG 18:00-08:00", all_day=True),
+    ], s)
+    assert pauze.shift_type == ShiftType.NEGEREN
+    assert pauze_bet.shift_type == ShiftType.NEGEREN
+    assert consig.shift_type == ShiftType.AFSPRAAK
+    assert consig.display_name == "CONSIG"
+    assert consig.start == datetime(2026, 8, 4, 18, 0)
+    assert consig.end == datetime(2026, 8, 5, 8, 0)
+
+
+def test_bvcm_dienst_codes_keep_time_based_names():
+    s = Settings()
+    long_shift, short_activity = apply_classification([
+        make_shift(datetime(2026, 8, 3), datetime(2026, 8, 4),
+                   "A5.05 Motorbegeleiding uitvoeren 07:00-16:00", all_day=True),
+        make_shift(datetime(2026, 8, 3), datetime(2026, 8, 4),
+                   "A6.02 Adviseren 13:00-15:00", all_day=True),
+    ], s)
+    # Long dienst-code items are named by their start time, not "Dienst".
+    assert long_shift.shift_type == ShiftType.OCHTEND
+    assert long_shift.display_name == "Ochtend"
+    # Short activities keep their informative code+description title.
+    assert short_activity.shift_type == ShiftType.AFSPRAAK
+    assert short_activity.display_name == "A6.02 Adviseren"
+
+
 # ----------------------------------------------------------------------
 # BVCM/Outlook-style roster (all-day events, times in the title)
 # ----------------------------------------------------------------------
