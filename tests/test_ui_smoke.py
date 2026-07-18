@@ -62,10 +62,12 @@ def test_settings_dialog_builds_and_saves(app, tmp_path, monkeypatch):
     monkeypatch.setattr(settings_mod, "settings_path", lambda: tmp_path / "settings.json")
 
     from werkrooster_sync.core.settings import Settings
-    from werkrooster_sync.ui.settings_dialog import SettingsDialog
+    from werkrooster_sync.ui.settings_dialog import SettingsPanel
 
     s = Settings()
-    dialog = SettingsDialog(s)
+    dialog = SettingsPanel(s)
+    fired = []
+    dialog.saved.connect(lambda: fired.append(True))
     # On Linux the only backend is .ics export, so the warning must show
     # and the maintenance actions must refuse with the same warning.
     assert not dialog._selected_backend().can_inspect_calendar
@@ -83,6 +85,7 @@ def test_settings_dialog_builds_and_saves(app, tmp_path, monkeypatch):
     dialog.min_shift_spin.setValue(6)
     dialog._save()
 
+    assert fired  # Opslaan returns control to the main view via the signal
     saved = Settings.load(tmp_path / "settings.json")
     assert saved.names["ochtend"] == "Vroeg"
     assert saved.include_vrij is False
