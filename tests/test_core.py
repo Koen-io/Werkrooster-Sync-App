@@ -263,6 +263,17 @@ def test_find_duplicates():
     assert dups == {key: 2}
 
 
+def test_export_backend_cannot_inspect_calendar():
+    from werkrooster_sync.calendars.base import CalendarError
+
+    backend = IcsExportBackend(open_after=False)
+    assert backend.can_inspect_calendar is False
+    with pytest.raises(CalendarError):
+        backend.count_synced("x", datetime(2026, 1, 1), datetime(2026, 12, 31))
+    with pytest.raises(CalendarError):
+        backend.remove_synced("x", datetime(2026, 1, 1), datetime(2026, 12, 31))
+
+
 # ----------------------------------------------------------------------
 # ICS export backend
 # ----------------------------------------------------------------------

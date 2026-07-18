@@ -190,7 +190,11 @@ class MacCalendarBackend(CalendarBackend):
             else:
                 seen.add(key)
 
-        for uid in surplus_uids:
+        self._delete_by_uids(calendar_name, surplus_uids)
+        return len(surplus_uids)
+
+    def _delete_by_uids(self, calendar_name: str, uids: list[str]) -> None:
+        for uid in uids:
             _run(
                 f'tell application "Calendar"\n'
                 f'  tell calendar "{_esc(calendar_name)}"\n'
@@ -198,4 +202,14 @@ class MacCalendarBackend(CalendarBackend):
                 f"  end tell\n"
                 f"end tell"
             )
-        return len(surplus_uids)
+
+    # ------------------------------------------------------------------
+    def count_synced(self, calendar_name: str, start: datetime, end: datetime) -> int:
+        rows = self._scan(calendar_name, start, end)
+        return sum(1 for _t, _s, marker, _u in rows if marker)
+
+    def remove_synced(self, calendar_name: str, start: datetime, end: datetime) -> int:
+        rows = self._scan(calendar_name, start, end, with_uid=True)
+        uids = [uid for _t, _s, marker, uid in rows if marker and uid]
+        self._delete_by_uids(calendar_name, uids)
+        return len(uids)

@@ -1,16 +1,21 @@
 """Settings dialog with tabs: calendar, naming & reminders, rules, maintenance."""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QThread, Signal
+from datetime import datetime, timedelta
+
+from PySide6.QtCore import QDate, Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDateEdit,
     QDialog,
     QFormLayout,
+    QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QSpinBox,
     QTabWidget,
@@ -144,6 +149,22 @@ class SettingsDialog(QDialog):
         f.addRow("Agenda:", cal_row)
         form.addLayout(f)
 
+        self.export_warn = QFrame()
+        self.export_warn.setObjectName("warnBox")
+        warn_layout = QHBoxLayout(self.export_warn)
+        warn_layout.setContentsMargins(14, 10, 14, 10)
+        warn_icon = QLabel("⚠")
+        warn_icon.setStyleSheet("font-size: 18px;")
+        warn_text = QLabel(
+            "Let op: in .ics export-modus kan de app je agenda niet inzien. "
+            "Controle op dubbele items is dan niet mogelijk — dat moet gebeuren "
+            "in de agenda-app waarin je het bestand importeert."
+        )
+        warn_text.setWordWrap(True)
+        warn_layout.addWidget(warn_icon, alignment=Qt.AlignmentFlag.AlignTop)
+        warn_layout.addWidget(warn_text, stretch=1)
+        form.addWidget(self.export_warn)
+
         self.calendar_status = QLabel("")
         self.calendar_status.setObjectName("statusDim")
         self.calendar_status.setWordWrap(True)
@@ -152,8 +173,16 @@ class SettingsDialog(QDialog):
 
         if self.settings.calendar_name:
             self.calendar_combo.addItem(self.settings.calendar_name)
+        self.backend_combo.currentIndexChanged.connect(self._update_export_warning)
+        self._update_export_warning()
         self._load_calendars()
         return w
+
+    def _selected_backend(self):
+        return get_backend(self.backend_combo.currentData())
+
+    def _update_export_warning(self):
+        self.export_warn.setVisible(not self._selected_backend().can_inspect_calendar)
 
     def _load_calendars(self):
         backend = get_backend(self.backend_combo.currentData())
@@ -360,6 +389,10 @@ class SettingsDialog(QDialog):
         outer.setContentsMargins(18, 18, 18, 18)
         outer.setSpacing(14)
 
+        dup_title = QLabel("Dubbele items")
+        dup_title.setObjectName("sectionTitle")
+        outer.addWidget(dup_title)
+
         intro = QLabel(
             "Controleer of er dubbele roosteritems in je agenda staan (zelfde naam "
             "én zelfde begintijd), bijvoorbeeld doordat een rooster twee keer is "
@@ -384,8 +417,69 @@ class SettingsDialog(QDialog):
         self.dup_result = QLabel("")
         self.dup_result.setWordWrap(True)
         outer.addWidget(self.dup_result)
+
+        # ------------------------------------------------------ old roster
+        old_title = QLabel("Oud rooster verwijderen")
+        old_title.setObjectName("sectionTitle")
+        outer.addSpacing(6)
+        outer.addWidget(old_title)
+
+        old_box = QFrame()
+        old_box.setObjectName("dangerBox")
+        old_layout = QVBoxLayout(old_box)
+        old_layout.setContentsMargins(14, 12, 14, 12)
+        old_layout.setSpacing(10)
+
+        old_intro = QLabel(
+            "Verwijdert in één keer alle roosteritems die door Werkrooster Sync "
+            "zijn aangemaakt in de gekozen periode — handig wanneer het rooster "
+            "is gewijzigd en je opnieuw wilt importeren. Items die je zelf hebt "
+            "aangemaakt worden nooit aangeraakt: alleen items met de "
+            "verborgen Werkrooster Sync-code worden verwijderd."
+        )
+        old_intro.setWordWrap(True)
+        old_intro.setObjectName("statusDim")
+        old_layout.addWidget(old_intro)
+
+        range_row = QHBoxLayout()
+        range_row.addWidget(QLabel("Periode:"))
+        today = QDate.currentDate()
+        self.old_from = QDateEdit(today)
+        self.old_to = QDateEdit(today.addDays(180))
+        for de in (self.old_from, self.old_to):
+            de.setCalendarPopup(True)
+            de.setDisplayFormat("dd-MM-yyyy")
+        range_row.addWidget(self.old_from)
+        range_row.addWidget(QLabel("t/m"))
+        range_row.addWidget(self.old_to)
+        range_row.addStretch()
+
+        self.remove_old_btn = QPushButton("Verwijder oud rooster…")
+        self.remove_old_btn.setObjectName("danger")
+        self.remove_old_btn.clicked.connect(self._remove_old_roster)
+        range_row.addWidget(self.remove_old_btn)
+        old_layout.addLayout(range_row)
+
+        self.old_result = QLabel("")
+        self.old_result.setWordWrap(True)
+        old_layout.addWidget(self.old_result)
+
+        outer.addWidget(old_box)
         outer.addStretch()
         return w
+
+    def _guard_can_inspect(self, result_label: QLabel) -> bool:
+        """Show the export-mode warning if the backend can't see the calendar."""
+        if self._selected_backend().can_inspect_calendar:
+            return True
+        result_label.setObjectName("statusWarn")
+        result_label.setText(
+            "⚠  In .ics export-modus kan de app je agenda niet inzien. "
+            "Controleren en opruimen moet dan gebeuren in de agenda-app "
+            "waarin je het bestand importeert."
+        )
+        result_label.style().polish(result_label)
+        return False
 
     def _current_selection(self):
         backend = get_backend(self.backend_combo.currentData())
@@ -394,6 +488,8 @@ class SettingsDialog(QDialog):
         return backend, snapshot
 
     def _check_duplicates(self):
+        if not self._guard_can_inspect(self.dup_result):
+            return
         backend, snapshot = self._current_selection()
         self.check_btn.setEnabled(False)
         self.dup_result.setObjectName("statusDim")
@@ -428,8 +524,8 @@ class SettingsDialog(QDialog):
         self._worker.start()
 
     def _remove_duplicates(self):
-        from datetime import datetime, timedelta
-
+        if not self._guard_can_inspect(self.dup_result):
+            return
         backend, snapshot = self._current_selection()
         start = datetime.now() - timedelta(days=90)
         end = datetime.now() + timedelta(days=180)
@@ -450,6 +546,112 @@ class SettingsDialog(QDialog):
             self.dup_result.setObjectName("statusError")
             self.dup_result.setText(msg)
             self.dup_result.style().polish(self.dup_result)
+
+        self._worker.done.connect(on_done)
+        self._worker.failed.connect(on_fail)
+        self._worker.start()
+
+    # ------------------------------------------------------------------
+    def _remove_old_roster(self):
+        """Two-step flow: count the app's items in the range, ask for explicit
+        confirmation showing that exact count, then delete."""
+        if not self._guard_can_inspect(self.old_result):
+            return
+        backend, snapshot = self._current_selection()
+        if not snapshot.calendar_name:
+            self.old_result.setObjectName("statusError")
+            self.old_result.setText("Kies eerst een agenda hierboven.")
+            self.old_result.style().polish(self.old_result)
+            return
+
+        d1 = self.old_from.date()
+        d2 = self.old_to.date()
+        start = datetime(d1.year(), d1.month(), d1.day(), 0, 0)
+        end = datetime(d2.year(), d2.month(), d2.day(), 23, 59)
+        if end < start:
+            self.old_result.setObjectName("statusError")
+            self.old_result.setText("De einddatum ligt vóór de begindatum.")
+            self.old_result.style().polish(self.old_result)
+            return
+
+        self.remove_old_btn.setEnabled(False)
+        self.old_result.setObjectName("statusDim")
+        self.old_result.setText("Roosteritems tellen…")
+        self.old_result.style().polish(self.old_result)
+
+        self._worker = _Worker(
+            lambda: backend.count_synced(snapshot.calendar_name, start, end), self
+        )
+
+        def on_counted(count: int) -> None:
+            self.remove_old_btn.setEnabled(True)
+            if not count:
+                self.old_result.setObjectName("statusOk")
+                self.old_result.setText(
+                    "Geen door Werkrooster Sync aangemaakte items gevonden in "
+                    "deze periode."
+                )
+                self.old_result.style().polish(self.old_result)
+                return
+            self._confirm_and_remove(backend, snapshot, start, end, count)
+
+        def on_fail(msg: str) -> None:
+            self.remove_old_btn.setEnabled(True)
+            self.old_result.setObjectName("statusError")
+            self.old_result.setText(msg)
+            self.old_result.style().polish(self.old_result)
+
+        self._worker.done.connect(on_counted)
+        self._worker.failed.connect(on_fail)
+        self._worker.start()
+
+    def _confirm_and_remove(self, backend, snapshot, start, end, count: int):
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Oud rooster verwijderen")
+        box.setText(
+            f"Weet je zeker dat je het oude rooster wilt verwijderen?\n\n"
+            f"Er worden {count} roosteritem(s) verwijderd uit agenda "
+            f"“{snapshot.calendar_name}”\n"
+            f"in de periode {start:%d-%m-%Y} t/m {end:%d-%m-%Y}.\n\n"
+            f"Alleen items die door Werkrooster Sync zijn aangemaakt worden "
+            f"verwijderd; je eigen afspraken blijven staan. "
+            f"Dit kan niet ongedaan worden gemaakt."
+        )
+        delete_btn = box.addButton(
+            f"Ja, verwijder {count} item(s)", QMessageBox.ButtonRole.DestructiveRole
+        )
+        delete_btn.setObjectName("danger")
+        cancel_btn = box.addButton("Annuleren", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(cancel_btn)
+        box.setStyleSheet(theme.QSS)
+        box.exec()
+        if box.clickedButton() is not delete_btn:
+            self.old_result.setObjectName("statusDim")
+            self.old_result.setText("Geannuleerd — er is niets verwijderd.")
+            self.old_result.style().polish(self.old_result)
+            return
+
+        self.remove_old_btn.setEnabled(False)
+        self.old_result.setObjectName("statusDim")
+        self.old_result.setText("Oud rooster verwijderen…")
+        self.old_result.style().polish(self.old_result)
+
+        self._worker = _Worker(
+            lambda: backend.remove_synced(snapshot.calendar_name, start, end), self
+        )
+
+        def on_done(removed: int) -> None:
+            self.remove_old_btn.setEnabled(True)
+            self.old_result.setObjectName("statusOk")
+            self.old_result.setText(f"{removed} roosteritem(s) verwijderd. ✓")
+            self.old_result.style().polish(self.old_result)
+
+        def on_fail(msg: str) -> None:
+            self.remove_old_btn.setEnabled(True)
+            self.old_result.setObjectName("statusError")
+            self.old_result.setText(msg)
+            self.old_result.style().polish(self.old_result)
 
         self._worker.done.connect(on_done)
         self._worker.failed.connect(on_fail)

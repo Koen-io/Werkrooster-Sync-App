@@ -72,3 +72,19 @@ class CalendarBackend(ABC):
         Optional: backends that cannot delete raise CalendarError.
         """
         raise CalendarError(f"{self.label} ondersteunt geen verwijderen van dubbele items.")
+
+    #: Whether this backend can see the target calendar at all. False for
+    #: export-style backends: duplicate checking and removal then have to
+    #: happen in the receiving calendar app.
+    can_inspect_calendar: bool = True
+
+    def count_synced(self, calendar_name: str, start: datetime, end: datetime) -> int:
+        """Number of items in the range that were created by this app
+        (recognised by their [WerkroosterSync:…] marker)."""
+        raise CalendarError(f"{self.label} kan de agenda niet inzien.")
+
+    def remove_synced(self, calendar_name: str, start: datetime, end: datetime) -> int:
+        """Delete all items in the range that were created by this app.
+        Items the user made themselves are never touched. Returns the
+        number removed."""
+        raise CalendarError(f"{self.label} kan geen items verwijderen.")

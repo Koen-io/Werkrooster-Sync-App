@@ -43,6 +43,7 @@ def _escape(text: str) -> str:
 class IcsExportBackend(CalendarBackend):
     id = "ics_export"
     label = "Andere agenda-app (.ics export)"
+    can_inspect_calendar = False
 
     def __init__(self, output_dir: Path | None = None, open_after: bool = True):
         self.output_dir = output_dir

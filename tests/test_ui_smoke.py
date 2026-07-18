@@ -45,6 +45,15 @@ def test_settings_dialog_builds_and_saves(app, tmp_path, monkeypatch):
 
     s = Settings()
     dialog = SettingsDialog(s)
+    # On Linux the only backend is .ics export, so the warning must show
+    # and the maintenance actions must refuse with the same warning.
+    assert not dialog._selected_backend().can_inspect_calendar
+    assert dialog.export_warn.isVisibleTo(dialog)
+    dialog._check_duplicates()
+    assert "export-modus" in dialog.dup_result.text()
+    dialog._remove_old_roster()
+    assert "export-modus" in dialog.old_result.text()
+
     dialog.name_edits["ochtend"].setText("Vroeg")
     dialog.include_vrij_check.setChecked(False)
     dialog.include_afspraken_check.setChecked(False)
