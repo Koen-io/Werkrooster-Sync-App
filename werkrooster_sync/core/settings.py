@@ -61,6 +61,7 @@ def settings_path() -> Path:
 #: if no keyword matches, by the hour its shift starts.
 DEFAULT_RULES: dict[str, Any] = {
     "keywords": {
+        # Vrij + all BVCM leave registrations (verlof-soorten).
         ShiftType.VRIJ.value: [
             "vrij",
             "vry",
@@ -71,20 +72,45 @@ DEFAULT_RULES: dict[str, Any] = {
             "vr.zondag",
             "vr.zaterdag",
             "feestdag",
+            "bver",       # Buitengewoon verlof (BVER_QUARA telt als dienst)
+            "bv_sportd",  # Bijzonder verlof sportdag
+            "blok_opnll", # Geblokkeerde levensloopgelden
+            "cala",       # Calamiteitenverlof
+            "caocomp",    # Compensatie niet gewerkte uren
+            "geb_verl",   # Aanvullend geboorteverlof
+            "onb_verl",   # Onbetaald verlof
+            "rver",       # Rouwverlof
+            "studie",     # Studieverlof
+            "uitdeta",    # Uitdetacheren
+            "zorg",       # Zorgverlof
+            "zwav",       # Zwangerschapsverlof
         ],
         ShiftType.OCHTEND.value: ["ochtend", "vroeg", "morning", "early"],
         ShiftType.LAAT.value: ["laat", "avond", "late", "evening"],
         ShiftType.NACHT.value: ["nacht", "night"],
         # "dienst" is the fallback category; generic words like "dienst" must
-        # not override the start-time rules, so no default keywords here.
-        ShiftType.DIENST.value: [],
+        # not override the start-time rules — shifts get their name from the
+        # start time. Only codes that would otherwise be caught by a
+        # verlof-keyword belong here (longest matching keyword wins, so
+        # "bver_quara" beats the vrij-keyword "bver").
+        ShiftType.DIENST.value: ["bver_quara"],
         # Items that keep their own title (with times stripped), like sick
-        # leave from the PDF roster ("ZIEK 10:00-17:36" -> "ZIEK").
-        ShiftType.AFSPRAAK.value: ["ziek", "cursus", "opleiding", "training"],
+        # leave from the PDF roster ("ZIEK 10:00-17:36" -> "ZIEK") and
+        # consignatie (on-call is not a worked shift).
+        ShiftType.AFSPRAAK.value: [
+            "ziek",
+            "cursus",
+            "opleiding",
+            "training",
+            "consig",
+            "schors",
+            "werkonderb",
+        ],
         # Roster noise that should never reach the calendar. [Rust] blocks are
-        # the rest periods BVCM exports around every shift; birthdays come
-        # from Outlook's contacts calendar riding along in the export.
-        ShiftType.NEGEREN.value: ["[rust]", "verjaardag"],
+        # the rest periods BVCM exports around every shift; pauzes are breaks
+        # inside a shift; birthdays come from Outlook's contacts calendar
+        # riding along in the export.
+        ShiftType.NEGEREN.value: ["[rust]", "pauze", "verjaardag"],
     },
     # Start-hour windows [from, to) in local time, checked in this order.
     "time_windows": {
