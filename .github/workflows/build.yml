@@ -63,3 +63,27 @@ jobs:
         with:
           name: WerkroosterSync-Windows
           path: dist/WerkroosterSync.exe
+
+  release:
+    needs: [build-macos, build-windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Publish release with both apps
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Werkrooster Sync ${{ github.ref_name }}
+          body: |
+            **Werkrooster Sync** — zet je BVCM-rooster (.ics of PDF) in één klik in je agenda.
+
+            ## Downloads
+            - **macOS**: `WerkroosterSync-macOS.zip` → uitpakken → *Werkrooster Sync.app* (eerste keer: rechtermuisklik → Open)
+            - **Windows**: `WerkroosterSync.exe` → één portable bestand, geen installatie (SmartScreen: *Meer informatie → Toch uitvoeren*)
+          files: |
+            artifacts/WerkroosterSync-macOS/WerkroosterSync-macOS.zip
+            artifacts/WerkroosterSync-Windows/WerkroosterSync.exe
