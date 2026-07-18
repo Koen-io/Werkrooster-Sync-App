@@ -46,9 +46,14 @@ def test_branding_assets_present_and_loadable(app):
     icon = _app_icon()
     assert not icon.isNull()
 
+    # The animated splash renders at any point in its timeline without errors.
     splash = _make_splash(app)
     assert splash is not None
-    assert not splash.pixmap().isNull()
+    for t in (0.0, 0.35, 1.0, 3.2):
+        splash._time_override = t
+        image = splash.grab().toImage()
+        assert not image.isNull()
+    splash.finish(None)
 
 
 def test_settings_dialog_builds_and_saves(app, tmp_path, monkeypatch):

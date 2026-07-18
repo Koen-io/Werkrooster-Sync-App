@@ -4,7 +4,8 @@ from __future__ import annotations
 import sys
 
 #: How long the splash screen stays visible before the main window opens.
-SPLASH_MILLISECONDS = 1800
+#: Long enough for the full entrance animation plus one glow pulse.
+SPLASH_MILLISECONDS = 2400
 
 
 def _app_icon():
@@ -25,24 +26,10 @@ def _app_icon():
 
 
 def _make_splash(app):
-    """Build the splash screen, centered on the primary screen. Returns None
-    when no splash image is bundled."""
-    from PySide6.QtCore import Qt
-    from PySide6.QtGui import QPixmap
-    from PySide6.QtWidgets import QSplashScreen
+    """Build the animated splash screen, centered on the primary screen."""
+    from .ui.splash import AnimatedSplash
 
-    from .resources import asset_path
-
-    splash_file = asset_path("splash.png")
-    if not splash_file.exists():
-        return None
-    pixmap = QPixmap(str(splash_file))
-    if pixmap.isNull():
-        return None
-    # The artwork is delivered at 2x; scale to a comfortable logical size and
-    # keep it crisp on Retina/HiDPI screens.
-    pixmap.setDevicePixelRatio(2.0)
-    splash = QSplashScreen(pixmap, Qt.WindowType.WindowStaysOnTopHint)
+    splash = AnimatedSplash()
     screen = app.primaryScreen().availableGeometry()
     frame = splash.frameGeometry()
     frame.moveCenter(screen.center())
