@@ -116,6 +116,7 @@ def apply_classification(shifts: list[Shift], settings: Settings) -> list[Shift]
     for shift in shifts:
         extract_summary_times(shift, settings)
         shift.shift_type = classify(shift, settings)
+        shift.is_concept = bool(_CONCEPT_RE.match(shift.original_summary))
 
         if shift.shift_type in (ShiftType.AFSPRAAK, ShiftType.NEGEREN):
             # These keep their own title from the roster.

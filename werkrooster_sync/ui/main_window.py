@@ -296,6 +296,10 @@ class MainWindow(QMainWindow):
         self.progress_bar.setVisible(False)
         self.sync_btn.setEnabled(True)
         parts = [f"{len(report.added)} toegevoegd"]
+        if report.concept_removed:
+            parts.append(
+                f"{report.concept_removed} verouderde conceptdienst(en) vervangen"
+            )
         if report.skipped_existing:
             parts.append(f"{len(report.skipped_existing)} stond(en) er al in")
         if report.skipped_by_settings:

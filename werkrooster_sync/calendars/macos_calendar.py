@@ -111,34 +111,36 @@ class MacCalendarBackend(CalendarBackend):
     # ------------------------------------------------------------------
     def _scan(
         self, calendar_name: str, start: datetime, end: datetime, with_uid: bool = False
-    ) -> list[tuple[str, str, str, str]]:
-        """Rows of (title_casefold, stamp, sync_id, uid) for events in range."""
+    ) -> list[tuple[str, str, str, bool, str]]:
+        """Rows of (title_casefold, stamp, sync_id, concept, uid) in range."""
         if not calendar_name:
             return []
         out = _run(
             self._range_script(calendar_name, start, end, with_uid=with_uid),
             timeout=300,
         )
-        rows: list[tuple[str, str, str, str]] = []
+        rows: list[tuple[str, str, str, bool, str]] = []
         for row in out.split(_ROW):
             parts = row.split(_SEP)
-            if len(parts) >= 3:
-                uid = parts[3].strip() if len(parts) >= 4 else ""
-                rows.append(
-                    (parts[0].strip().casefold(), parts[1].strip(), parts[2].strip(), uid)
-                )
+            if len(parts) >= 4:
+                title = parts[0].strip().casefold()
+                concept = parts[3].strip() == "1" or title.endswith("(concept)")
+                uid = parts[4].strip() if len(parts) >= 5 else ""
+                rows.append((title, parts[1].strip(), parts[2].strip(), concept, uid))
         return rows
 
     def existing_keys_list(
         self, calendar_name: str, start: datetime, end: datetime
     ) -> list[tuple[str, str]]:
-        return [(t, s) for t, s, _m, _u in self._scan(calendar_name, start, end)]
+        return [(t, s) for t, s, _m, _c, _u in self._scan(calendar_name, start, end)]
 
-    def scan_existing(self, calendar_name: str, start: datetime, end: datetime):
-        rows = self._scan(calendar_name, start, end)
-        keys = [(t, s) for t, s, _m, _u in rows]
-        ids = {m for _t, _s, m, _u in rows if m}
-        return keys, ids
+    def scan_events(self, calendar_name: str, start: datetime, end: datetime):
+        from .base import ExistingEvent
+
+        return [
+            ExistingEvent(t, s, m, c)
+            for t, s, m, c, _u in self._scan(calendar_name, start, end)
+        ]
 
     def _range_script(
         self, calendar_name: str, start: datetime, end: datetime, with_uid: bool
@@ -161,6 +163,7 @@ class MacCalendarBackend(CalendarBackend):
             f'      set miT to text -2 thru -1 of ("0" & (minutes of sd))\n'
             f"      set stamp to ((year of sd) as text) & mmT & ddT & hhT & miT\n"
             f'      set syncId to ""\n'
+            f'      set conceptFlag to "0"\n'
             f"      try\n"
             f"        set desc to (description of e) as text\n"
             f"        if desc contains tag then\n"
@@ -169,9 +172,10 @@ class MacCalendarBackend(CalendarBackend):
             f'          set AppleScript\'s text item delimiters to ""\n'
             f"          set syncId to text 1 thru 12 of part\n"
             f"        end if\n"
+            f'        if desc contains "[WerkroosterSync-concept]" then set conceptFlag to "1"\n'
             f"      end try\n"
             f'      set AppleScript\'s text item delimiters to ""\n'
-            f'      set out to out & (summary of e) & "{_SEP}" & stamp & "{_SEP}" & syncId{uid_part} & "{_ROW}"\n'
+            f'      set out to out & (summary of e) & "{_SEP}" & stamp & "{_SEP}" & syncId & "{_SEP}" & conceptFlag{uid_part} & "{_ROW}"\n'
             f"    end repeat\n"
             f"  end tell\n"
             f"end tell\n"
@@ -183,7 +187,7 @@ class MacCalendarBackend(CalendarBackend):
         rows = self._scan(calendar_name, start, end, with_uid=True)
         seen: set[tuple[str, str]] = set()
         surplus_uids: list[str] = []
-        for title, stamp, _marker, uid in rows:
+        for title, stamp, _marker, _concept, uid in rows:
             key = (title, stamp)
             if key in seen:
                 surplus_uids.append(uid)
@@ -206,10 +210,18 @@ class MacCalendarBackend(CalendarBackend):
     # ------------------------------------------------------------------
     def count_synced(self, calendar_name: str, start: datetime, end: datetime) -> int:
         rows = self._scan(calendar_name, start, end)
-        return sum(1 for _t, _s, marker, _u in rows if marker)
+        return sum(1 for _t, _s, marker, _c, _u in rows if marker)
 
     def remove_synced(self, calendar_name: str, start: datetime, end: datetime) -> int:
         rows = self._scan(calendar_name, start, end, with_uid=True)
-        uids = [uid for _t, _s, marker, uid in rows if marker and uid]
+        uids = [uid for _t, _s, marker, _c, uid in rows if marker and uid]
+        self._delete_by_uids(calendar_name, uids)
+        return len(uids)
+
+    def remove_by_sync_ids(
+        self, calendar_name: str, start: datetime, end: datetime, sync_ids: set[str]
+    ) -> int:
+        rows = self._scan(calendar_name, start, end, with_uid=True)
+        uids = [uid for _t, _s, marker, _c, uid in rows if marker in sync_ids and uid]
         self._delete_by_uids(calendar_name, uids)
         return len(uids)

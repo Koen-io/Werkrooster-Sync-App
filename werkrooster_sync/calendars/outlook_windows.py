@@ -133,11 +133,13 @@ class OutlookBackend(CalendarBackend):
 
     def _scan(
         self, calendar_name: str, start: datetime, end: datetime
-    ) -> list[tuple[str, str, str, object]]:
-        """Rows of (title_casefold, stamp, sync_id, com_item) for the range."""
+    ) -> list[tuple[str, str, str, bool, object]]:
+        """Rows of (title_casefold, stamp, sync_id, concept, com_item)."""
+        from ..core.models import CONCEPT_TAG
+
         outlook = _com()
         folder = self._folder(outlook, calendar_name)
-        rows: list[tuple[str, str, str, object]] = []
+        rows: list[tuple[str, str, str, bool, object]] = []
         try:
             for item in self._items_in_range(folder, start, end):
                 subject = str(item.Subject or "")
@@ -145,13 +147,17 @@ class OutlookBackend(CalendarBackend):
                 stamp = f"{item_start.year:04d}{item_start.month:02d}{item_start.day:02d}" \
                         f"{item_start.hour:02d}{item_start.minute:02d}"
                 sync_id = ""
+                concept = subject.strip().casefold().endswith("(concept)")
                 try:
-                    ids = extract_sync_ids(str(item.Body or ""))
+                    body = str(item.Body or "")
+                    ids = extract_sync_ids(body)
                     if ids:
                         sync_id = ids[0]
+                    if CONCEPT_TAG in body:
+                        concept = True
                 except Exception:
                     pass  # Body can be blocked by the Outlook security guard
-                rows.append((subject.strip().casefold(), stamp, sync_id, item))
+                rows.append((subject.strip().casefold(), stamp, sync_id, concept, item))
         except Exception as exc:
             raise CalendarError(f"Kan agenda-items niet lezen uit Outlook: {exc}") from exc
         return rows
@@ -159,45 +165,57 @@ class OutlookBackend(CalendarBackend):
     def existing_keys_list(
         self, calendar_name: str, start: datetime, end: datetime
     ) -> list[tuple[str, str]]:
-        return [(t, s) for t, s, _m, _i in self._scan(calendar_name, start, end)]
+        return [(t, s) for t, s, _m, _c, _i in self._scan(calendar_name, start, end)]
 
-    def scan_existing(self, calendar_name: str, start: datetime, end: datetime):
-        rows = self._scan(calendar_name, start, end)
-        keys = [(t, s) for t, s, _m, _i in rows]
-        ids = {m for _t, _s, m, _i in rows if m}
-        return keys, ids
+    def scan_events(self, calendar_name: str, start: datetime, end: datetime):
+        from .base import ExistingEvent
+
+        return [
+            ExistingEvent(t, s, m, c)
+            for t, s, m, c, _i in self._scan(calendar_name, start, end)
+        ]
 
     # ------------------------------------------------------------------
     def remove_duplicates(self, calendar_name: str, start: datetime, end: datetime) -> int:
         seen: set[tuple[str, str]] = set()
         surplus = []
-        for title, stamp, _marker, item in self._scan(calendar_name, start, end):
+        for title, stamp, _marker, _concept, item in self._scan(calendar_name, start, end):
             key = (title, stamp)
             if key in seen:
                 surplus.append(item)
             else:
                 seen.add(key)
+        return self._delete_items(surplus)
+
+    def _delete_items(self, items: list) -> int:
         try:
-            for item in surplus:
+            for item in items:
                 item.Delete()
         except Exception as exc:
-            raise CalendarError(f"Verwijderen van dubbele items mislukt: {exc}") from exc
-        return len(surplus)
+            raise CalendarError(f"Verwijderen van roosteritems mislukt: {exc}") from exc
+        return len(items)
 
     # ------------------------------------------------------------------
     def count_synced(self, calendar_name: str, start: datetime, end: datetime) -> int:
         rows = self._scan(calendar_name, start, end)
-        return sum(1 for _t, _s, marker, _i in rows if marker)
+        return sum(1 for _t, _s, marker, _c, _i in rows if marker)
 
     def remove_synced(self, calendar_name: str, start: datetime, end: datetime) -> int:
-        targets = [
-            item
-            for _t, _s, marker, item in self._scan(calendar_name, start, end)
-            if marker
-        ]
-        try:
-            for item in targets:
-                item.Delete()
-        except Exception as exc:
-            raise CalendarError(f"Verwijderen van roosteritems mislukt: {exc}") from exc
-        return len(targets)
+        return self._delete_items(
+            [
+                item
+                for _t, _s, marker, _c, item in self._scan(calendar_name, start, end)
+                if marker
+            ]
+        )
+
+    def remove_by_sync_ids(
+        self, calendar_name: str, start: datetime, end: datetime, sync_ids: set[str]
+    ) -> int:
+        return self._delete_items(
+            [
+                item
+                for _t, _s, marker, _c, item in self._scan(calendar_name, start, end)
+                if marker in sync_ids
+            ]
+        )

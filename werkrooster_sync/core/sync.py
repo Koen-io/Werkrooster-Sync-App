@@ -16,7 +16,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from ..calendars.base import CalendarBackend, CalendarError
-from .models import Shift, ShiftType, SyncReport, marker_for
+from .models import CONCEPT_TAG, Shift, ShiftType, SyncReport, marker_for
 from .settings import Settings
 
 
@@ -83,28 +83,77 @@ def sync_shifts(
 
     try:
         backend.begin(settings.calendar_name)
-        existing_keys, existing_ids = backend.scan_existing(
-            settings.calendar_name, first, last
-        )
-        existing_key_set = set(existing_keys)
+        events = backend.scan_events(settings.calendar_name, first, last)
     except CalendarError as exc:
         report.errors.append(str(exc))
         return report
 
-    total = len(to_sync)
-    for i, shift in enumerate(to_sync, start=1):
-        if progress:
-            progress(i, total, shift.display_name)
+    existing_ids = {e.sync_id for e in events if e.sync_id}
+    existing_key_set = {e.key for e in events}
+    concept_by_date: dict[str, list] = {}
+    for e in events:
+        if e.concept and e.sync_id:
+            concept_by_date.setdefault(e.date, []).append(e)
+
+    # ------------------------------------------------------------------
+    # Plan: which shifts are new, and which outdated concept items must go.
+    # An incoming shift (vrij/ochtend/laat/nacht/dienst — never a loose
+    # appointment) replaces the concept items on its day. Only items that
+    # carry the app's own concept tag are ever deleted.
+    # ------------------------------------------------------------------
+    shift_types = {
+        ShiftType.VRIJ,
+        ShiftType.OCHTEND,
+        ShiftType.LAAT,
+        ShiftType.NACHT,
+        ShiftType.DIENST,
+    }
+    to_add: list[Shift] = []
+    to_delete: set[str] = set()
+    for shift in to_sync:
         if shift.sync_id in existing_ids or shift.dedupe_key in existing_key_set:
             report.skipped_existing.append(shift)
             continue
+        if settings.replace_concept and shift.shift_type in shift_types:
+            day = shift.start.strftime("%Y%m%d")
+            outdated = [
+                e
+                for e in concept_by_date.get(day, [])
+                if e.sync_id not in to_delete
+            ]
+            if outdated:
+                to_delete.update(e.sync_id for e in outdated)
+                report.replaced.append(shift)
+        to_add.append(shift)
+        # Register the planned item so an identical copy later in the same
+        # file is recognised as a duplicate.
+        existing_ids.add(shift.sync_id)
+        existing_key_set.add(shift.dedupe_key)
+
+    if to_delete:
+        try:
+            report.concept_removed = backend.remove_by_sync_ids(
+                settings.calendar_name, first, last, to_delete
+            )
+        except CalendarError as exc:
+            report.errors.append(f"Vervangen van conceptdiensten mislukt: {exc}")
+            # Do not add the replacements if the old items could not be
+            # removed — that would create duplicates.
+            replaced_ids = {s.sync_id for s in report.replaced}
+            to_add = [s for s in to_add if s.sync_id not in replaced_ids]
+            report.replaced = []
+
+    total = len(to_add)
+    for i, shift in enumerate(to_add, start=1):
+        if progress:
+            progress(i, total, shift.display_name)
         marker = marker_for(shift.sync_id)
         if marker not in shift.description:
             shift.description = f"{shift.description}\n\n{marker}".strip()
+        if shift.is_concept and CONCEPT_TAG not in shift.description:
+            shift.description = f"{shift.description}\n{CONCEPT_TAG}".strip()
         try:
             backend.add_shift(settings.calendar_name, shift)
-            existing_ids.add(shift.sync_id)
-            existing_key_set.add(shift.dedupe_key)
             report.added.append(shift)
         except CalendarError as exc:
             report.errors.append(f"{shift.display_name} ({shift.start:%d-%m-%Y}): {exc}")
