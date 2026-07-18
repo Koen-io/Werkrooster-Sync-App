@@ -109,27 +109,46 @@ class MacCalendarBackend(CalendarBackend):
         _run(script)
 
     # ------------------------------------------------------------------
+    def _scan(
+        self, calendar_name: str, start: datetime, end: datetime, with_uid: bool = False
+    ) -> list[tuple[str, str, str, str]]:
+        """Rows of (title_casefold, stamp, sync_id, uid) for events in range."""
+        if not calendar_name:
+            return []
+        out = _run(
+            self._range_script(calendar_name, start, end, with_uid=with_uid),
+            timeout=300,
+        )
+        rows: list[tuple[str, str, str, str]] = []
+        for row in out.split(_ROW):
+            parts = row.split(_SEP)
+            if len(parts) >= 3:
+                uid = parts[3].strip() if len(parts) >= 4 else ""
+                rows.append(
+                    (parts[0].strip().casefold(), parts[1].strip(), parts[2].strip(), uid)
+                )
+        return rows
+
     def existing_keys_list(
         self, calendar_name: str, start: datetime, end: datetime
     ) -> list[tuple[str, str]]:
-        if not calendar_name:
-            return []
-        out = _run(self._range_script(calendar_name, start, end, with_id=False), timeout=300)
-        keys: list[tuple[str, str]] = []
-        for row in out.split(_ROW):
-            parts = row.split(_SEP)
-            if len(parts) == 2:
-                keys.append((parts[0].strip().casefold(), parts[1].strip()))
-        return keys
+        return [(t, s) for t, s, _m, _u in self._scan(calendar_name, start, end)]
+
+    def scan_existing(self, calendar_name: str, start: datetime, end: datetime):
+        rows = self._scan(calendar_name, start, end)
+        keys = [(t, s) for t, s, _m, _u in rows]
+        ids = {m for _t, _s, m, _u in rows if m}
+        return keys, ids
 
     def _range_script(
-        self, calendar_name: str, start: datetime, end: datetime, with_id: bool
+        self, calendar_name: str, start: datetime, end: datetime, with_uid: bool
     ) -> str:
-        id_part = ' & "' + _SEP + '" & (uid of e)' if with_id else ""
+        uid_part = ' & "' + _SEP + '" & (uid of e)' if with_uid else ""
         return (
             _date_decl("d1", start)
             + _date_decl("d2", end)
             + f'set out to ""\n'
+            f'set tag to "[WerkroosterSync:"\n'
             f'tell application "Calendar"\n'
             f'  tell calendar "{_esc(calendar_name)}"\n'
             f"    set evs to every event whose start date ≥ d1 and start date ≤ d2\n"
@@ -141,7 +160,18 @@ class MacCalendarBackend(CalendarBackend):
             f'      set hhT to text -2 thru -1 of ("0" & (hours of sd))\n'
             f'      set miT to text -2 thru -1 of ("0" & (minutes of sd))\n'
             f"      set stamp to ((year of sd) as text) & mmT & ddT & hhT & miT\n"
-            f'      set out to out & (summary of e) & "{_SEP}" & stamp{id_part} & "{_ROW}"\n'
+            f'      set syncId to ""\n'
+            f"      try\n"
+            f"        set desc to (description of e) as text\n"
+            f"        if desc contains tag then\n"
+            f"          set AppleScript's text item delimiters to tag\n"
+            f"          set part to text item 2 of desc\n"
+            f'          set AppleScript\'s text item delimiters to ""\n'
+            f"          set syncId to text 1 thru 12 of part\n"
+            f"        end if\n"
+            f"      end try\n"
+            f'      set AppleScript\'s text item delimiters to ""\n'
+            f'      set out to out & (summary of e) & "{_SEP}" & stamp & "{_SEP}" & syncId{uid_part} & "{_ROW}"\n'
             f"    end repeat\n"
             f"  end tell\n"
             f"end tell\n"
@@ -150,16 +180,13 @@ class MacCalendarBackend(CalendarBackend):
 
     # ------------------------------------------------------------------
     def remove_duplicates(self, calendar_name: str, start: datetime, end: datetime) -> int:
-        out = _run(self._range_script(calendar_name, start, end, with_id=True), timeout=300)
+        rows = self._scan(calendar_name, start, end, with_uid=True)
         seen: set[tuple[str, str]] = set()
         surplus_uids: list[str] = []
-        for row in out.split(_ROW):
-            parts = row.split(_SEP)
-            if len(parts) != 3:
-                continue
-            key = (parts[0].strip().casefold(), parts[1].strip())
+        for title, stamp, _marker, uid in rows:
+            key = (title, stamp)
             if key in seen:
-                surplus_uids.append(parts[2].strip())
+                surplus_uids.append(uid)
             else:
                 seen.add(key)
 

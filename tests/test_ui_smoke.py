@@ -32,7 +32,7 @@ def test_main_window_loads_roster(app, tmp_path, monkeypatch):
     assert len(window.shifts) == 5
     assert window.sync_btn.isEnabled()
     assert window.preview.count() == 5
-    assert "5 diensten geladen" in window.status.text()
+    assert "5 items geladen" in window.status.text()
 
 
 def test_settings_dialog_builds_and_saves(app, tmp_path, monkeypatch):
@@ -47,8 +47,15 @@ def test_settings_dialog_builds_and_saves(app, tmp_path, monkeypatch):
     dialog = SettingsDialog(s)
     dialog.name_edits["ochtend"].setText("Vroeg")
     dialog.include_vrij_check.setChecked(False)
+    dialog.include_afspraken_check.setChecked(False)
+    idx = dialog.display_combos["nacht"].findData("all_day")
+    dialog.display_combos["nacht"].setCurrentIndex(idx)
+    dialog.min_shift_spin.setValue(6)
     dialog._save()
 
     saved = Settings.load(tmp_path / "settings.json")
     assert saved.names["ochtend"] == "Vroeg"
     assert saved.include_vrij is False
+    assert saved.include_afspraken is False
+    assert saved.display["nacht"] == "all_day"
+    assert saved.rules["min_shift_hours"] == 6

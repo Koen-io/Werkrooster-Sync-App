@@ -17,15 +17,24 @@ Alles draait volledig lokaal; er is geen internetverbinding of account nodig.
 - **Automatische herkenning** — diensten worden herkend op trefwoorden in de titel
   én op begintijd (standaard: ochtend 05–12 u, laat 12–20 u, nacht 20–05 u).
   Beide zijn instelbaar.
+- **Losse afspraken** — roosteritems die geen hele dienst zijn (korter dan
+  5 uur, instelbaar) worden als gewone afspraak gesynchroniseerd: eigen titel,
+  exacte tijden, op elke willekeurige dag — ook dagen zonder dienst.
 - **Eigen namen** — pas per dienstsoort de naam aan die in je agenda komt
   (bijv. "Vroege dienst 🌅" i.p.v. "Ochtend").
+- **Weergave per soort** — kies per dienstsoort of het item als blok op de
+  exacte tijden of als hele-dag-item bovenaan de dag verschijnt.
 - **Herinneringen** — per dienstsoort instelbaar (bijv. nachtdienst 4 uur van
   tevoren, ochtenddienst de avond ervoor), of uit.
-- **Vrije dagen optioneel** — kies zelf of "Vrij" in je agenda komt, en of dat
-  als hele-dag-item gebeurt.
-- **Geen dubbele items** — bij het synchroniseren wordt alles wat er al staat
-  automatisch overgeslagen. Via *Instellingen → Onderhoud* kun je bovendien je
-  agenda controleren op dubbele items en ze in één keer opruimen.
+- **Vrije dagen en afspraken optioneel** — kies zelf of "Vrij" en losse
+  afspraken in je agenda komen.
+- **Geen dubbele items, gegarandeerd** — elk item dat de app aanmaakt krijgt een
+  onzichtbare code (`[WerkroosterSync:…]`) in de notities. Bij het laden van een
+  rooster controleert de app automatisch je agenda: wat er al staat wordt rood
+  gemarkeerd ("staat al in je agenda") en bij synchroniseren overgeslagen — ook
+  als je de titel van het item zelf hebt aangepast, dus je eigen aantekeningen
+  blijven staan. Handmatig controleren en opruimen kan óók, via
+  *Instellingen → Onderhoud*.
 - **Portable** — instellingen worden opgeslagen in een `settings.json` naast de
   app; kopieer de app (mét dat bestand) naar een andere computer en alles werkt
   direct hetzelfde.

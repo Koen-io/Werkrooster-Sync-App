@@ -43,7 +43,13 @@ TYPE_LABELS = {
     ShiftType.LAAT: "Late dienst",
     ShiftType.NACHT: "Nachtdienst",
     ShiftType.DIENST: "Overige dienst",
+    ShiftType.AFSPRAAK: "Afspraak (geen dienst)",
 }
+
+DISPLAY_OPTIONS: list[tuple[str, str]] = [
+    ("Exacte tijden", "timed"),
+    ("Hele dag (bovenaan)", "all_day"),
+]
 
 
 class _Worker(QThread):
@@ -71,7 +77,7 @@ class SettingsDialog(QDialog):
         self.settings = settings
         self._worker: _Worker | None = None
         self.setWindowTitle("Instellingen")
-        self.setMinimumSize(620, 560)
+        self.setMinimumSize(860, 620)
         self.setStyleSheet(theme.QSS)
 
         layout = QVBoxLayout(self)
@@ -181,8 +187,10 @@ class SettingsDialog(QDialog):
         outer.setSpacing(14)
 
         intro = QLabel(
-            "Bepaal hoe elke dienst in je agenda komt te staan en of je er een "
-            "herinnering bij wilt."
+            "Bepaal hoe elk soort item in je agenda komt te staan: de naam, of er "
+            "een herinnering bij komt, en of het als blok op de exacte tijden of "
+            "als hele-dag-item bovenaan de dag verschijnt. Afspraken die geen "
+            "dienst zijn houden altijd hun eigen titel uit het rooster."
         )
         intro.setWordWrap(True)
         intro.setObjectName("statusDim")
@@ -191,12 +199,15 @@ class SettingsDialog(QDialog):
         grid = QGridLayout()
         grid.setHorizontalSpacing(12)
         grid.setVerticalSpacing(10)
-        for col, header in enumerate(["Dienst", "Naam in agenda", "Herinnering", ""]):
+        for col, header in enumerate(
+            ["Soort", "Naam in agenda", "Weergave", "Herinnering", ""]
+        ):
             lbl = QLabel(header)
             lbl.setObjectName("sectionTitle")
             grid.addWidget(lbl, 0, col)
 
         self.name_edits: dict[str, QLineEdit] = {}
+        self.display_combos: dict[str, QComboBox] = {}
         self.reminder_checks: dict[str, QCheckBox] = {}
         self.reminder_combos: dict[str, QComboBox] = {}
 
@@ -208,6 +219,21 @@ class SettingsDialog(QDialog):
 
             name_edit = QLineEdit(self.settings.names.get(key, ""))
             name_edit.setPlaceholderText(TYPE_LABELS[shift_type])
+            if shift_type == ShiftType.AFSPRAAK:
+                name_edit.setText("")
+                name_edit.setPlaceholderText("eigen titel uit rooster")
+                name_edit.setEnabled(False)
+                name_edit.setToolTip(
+                    "Afspraken houden hun originele titel uit het rooster."
+                )
+
+            display_combo = QComboBox()
+            for label, value in DISPLAY_OPTIONS:
+                display_combo.addItem(label, value)
+            didx = display_combo.findData(
+                self.settings.display.get(key, "timed")
+            )
+            display_combo.setCurrentIndex(didx if didx >= 0 else 0)
 
             check = QCheckBox()
             cfg = self.settings.reminders.get(key, {})
@@ -223,10 +249,12 @@ class SettingsDialog(QDialog):
 
             grid.addWidget(type_lbl, row, 0)
             grid.addWidget(name_edit, row, 1)
-            grid.addWidget(check, row, 2, alignment=Qt.AlignmentFlag.AlignCenter)
-            grid.addWidget(combo, row, 3)
+            grid.addWidget(display_combo, row, 2)
+            grid.addWidget(check, row, 3, alignment=Qt.AlignmentFlag.AlignCenter)
+            grid.addWidget(combo, row, 4)
 
             self.name_edits[key] = name_edit
+            self.display_combos[key] = display_combo
             self.reminder_checks[key] = check
             self.reminder_combos[key] = combo
 
@@ -236,9 +264,11 @@ class SettingsDialog(QDialog):
         self.include_vrij_check.setChecked(self.settings.include_vrij)
         outer.addWidget(self.include_vrij_check)
 
-        self.vrij_allday_check = QCheckBox("Vrije dagen als hele-dag-item aanmaken")
-        self.vrij_allday_check.setChecked(self.settings.vrij_as_all_day)
-        outer.addWidget(self.vrij_allday_check)
+        self.include_afspraken_check = QCheckBox(
+            "Afspraken die geen dienst zijn ook synchroniseren"
+        )
+        self.include_afspraken_check.setChecked(self.settings.include_afspraken)
+        outer.addWidget(self.include_afspraken_check)
 
         outer.addStretch()
         return w
@@ -264,6 +294,8 @@ class SettingsDialog(QDialog):
         self.keyword_edits: dict[str, QLineEdit] = {}
         keywords = self.settings.rules.get("keywords", {})
         for shift_type in ShiftType.ordered():
+            if shift_type == ShiftType.AFSPRAAK:
+                continue  # afspraken are recognised by duration, not keywords
             key = shift_type.value
             edit = QLineEdit(", ".join(keywords.get(key, [])))
             color = theme.SHIFT_COLORS[shift_type]
@@ -302,6 +334,21 @@ class SettingsDialog(QDialog):
             tf.addRow(lbl, row)
             self.window_spins[key] = (s1, s2)
         outer.addLayout(tf)
+
+        dur_lbl = QLabel("Wat telt als dienst?")
+        dur_lbl.setObjectName("sectionTitle")
+        outer.addWidget(dur_lbl)
+
+        dur_row = QHBoxLayout()
+        dur_row.addWidget(QLabel("Een item zonder herkend woord is een dienst vanaf"))
+        self.min_shift_spin = QSpinBox()
+        self.min_shift_spin.setRange(1, 24)
+        self.min_shift_spin.setSuffix(" uur")
+        self.min_shift_spin.setValue(int(self.settings.rules.get("min_shift_hours", 5)))
+        dur_row.addWidget(self.min_shift_spin)
+        dur_row.addWidget(QLabel("duur; korter = losse afspraak"))
+        dur_row.addStretch()
+        outer.addLayout(dur_row)
 
         outer.addStretch()
         return w
@@ -414,15 +461,18 @@ class SettingsDialog(QDialog):
         s.backend_id = self.backend_combo.currentData() or ""
         s.calendar_name = self.calendar_combo.currentText()
         for key, edit in self.name_edits.items():
-            if edit.text().strip():
+            if edit.isEnabled() and edit.text().strip():
                 s.names[key] = edit.text().strip()
         for key in self.reminder_checks:
             s.reminders[key] = {
                 "enabled": self.reminder_checks[key].isChecked(),
                 "minutes": self.reminder_combos[key].currentData(),
             }
+        for key, combo in self.display_combos.items():
+            s.display[key] = combo.currentData()
         s.include_vrij = self.include_vrij_check.isChecked()
-        s.vrij_as_all_day = self.vrij_allday_check.isChecked()
+        s.include_afspraken = self.include_afspraken_check.isChecked()
+        s.rules["min_shift_hours"] = self.min_shift_spin.value()
         s.rules.setdefault("keywords", {})
         for key, edit in self.keyword_edits.items():
             s.rules["keywords"][key] = [

@@ -10,9 +10,19 @@ from werkrooster_sync.calendars.base import CalendarBackend
 from werkrooster_sync.calendars.ics_export import IcsExportBackend
 from werkrooster_sync.core.classifier import apply_classification, classify
 from werkrooster_sync.core.ics_parser import IcsParseError, parse_ics
-from werkrooster_sync.core.models import Shift, ShiftType
+from werkrooster_sync.core.models import (
+    Shift,
+    ShiftType,
+    extract_sync_ids,
+    marker_for,
+)
 from werkrooster_sync.core.settings import Settings
-from werkrooster_sync.core.sync import find_duplicates, prepare_shifts, sync_shifts
+from werkrooster_sync.core.sync import (
+    find_duplicates,
+    mark_already_imported,
+    prepare_shifts,
+    sync_shifts,
+)
 
 SAMPLE = Path(__file__).parent / "sample_rooster.ics"
 
@@ -58,6 +68,34 @@ def test_classify_by_time_windows():
     assert classify(make_shift(datetime(2026, 7, 20, 2, 0), datetime(2026, 7, 20, 8, 0), "Dienst"), s) == ShiftType.NACHT
 
 
+def test_classify_short_item_is_afspraak():
+    s = Settings()
+    # 4 hours without a shift keyword: not a whole shift -> afspraak
+    meeting = make_shift(datetime(2026, 7, 20, 13, 0), datetime(2026, 7, 20, 17, 0), "Overleg team")
+    assert classify(meeting, s) == ShiftType.AFSPRAAK
+    # Same duration WITH a shift keyword still counts as that shift
+    short_late = make_shift(datetime(2026, 7, 20, 13, 0), datetime(2026, 7, 20, 17, 0), "Late dienst kort")
+    assert classify(short_late, s) == ShiftType.LAAT
+
+
+def test_afspraak_keeps_original_title_and_exact_times():
+    s = Settings()
+    shifts = [make_shift(datetime(2026, 7, 20, 13, 0), datetime(2026, 7, 20, 17, 0), "Overleg team")]
+    result = apply_classification(shifts, s)
+    assert result[0].shift_type == ShiftType.AFSPRAAK
+    assert result[0].display_name == "Overleg team"
+    assert result[0].all_day is False
+
+
+def test_display_mode_all_day():
+    s = Settings()
+    s.display[ShiftType.NACHT.value] = "all_day"
+    shifts = [make_shift(datetime(2026, 7, 20, 23, 0), datetime(2026, 7, 21, 7, 30), "Nachtdienst")]
+    result = apply_classification(shifts, s)
+    assert result[0].shift_type == ShiftType.NACHT
+    assert result[0].all_day is True
+
+
 def test_classify_by_keyword_beats_time():
     s = Settings()
     # Summary says nacht, but starts at 09:00 -> keyword wins
@@ -86,12 +124,16 @@ def test_sample_roster_classification():
     shifts = apply_classification(parse_ics(SAMPLE), s)
     types = [x.shift_type for x in shifts]
     assert types == [
-        ShiftType.OCHTEND,  # 07:00
-        ShiftType.LAAT,     # 15:00
-        ShiftType.NACHT,    # keyword "nacht"
-        ShiftType.VRIJ,     # keyword "vrij", all-day
-        ShiftType.LAAT,     # 13:00, no keyword
+        ShiftType.OCHTEND,   # 07:00, 8.5 h
+        ShiftType.LAAT,      # 15:00, 8.5 h
+        ShiftType.NACHT,     # keyword "nacht"
+        ShiftType.VRIJ,      # keyword "vrij", all-day
+        ShiftType.AFSPRAAK,  # 13:00, 4 h, no keyword -> not a whole shift
     ]
+    assert all(x.sync_id for x in shifts)
+    # Re-importing the same file yields identical sync-IDs.
+    again = apply_classification(parse_ics(SAMPLE), s)
+    assert [x.sync_id for x in shifts] == [x.sync_id for x in again]
 
 
 # ----------------------------------------------------------------------
@@ -101,9 +143,10 @@ class FakeBackend(CalendarBackend):
     id = "fake"
     label = "Fake"
 
-    def __init__(self, existing=None):
+    def __init__(self, existing=None, existing_ids=None):
         self.added: list[Shift] = []
         self._existing = existing or []
+        self._existing_ids = set(existing_ids or [])
 
     def is_available(self):
         return True
@@ -117,8 +160,11 @@ class FakeBackend(CalendarBackend):
     def existing_keys_list(self, calendar_name, start, end):
         return list(self._existing)
 
+    def existing_sync_ids(self, calendar_name, start, end):
+        return set(self._existing_ids)
 
-def test_prepare_shifts_respects_vrij_setting():
+
+def test_prepare_shifts_respects_vrij_and_afspraak_settings():
     s = Settings()
     shifts = apply_classification(parse_ics(SAMPLE), s)
 
@@ -129,8 +175,12 @@ def test_prepare_shifts_respects_vrij_setting():
     s.include_vrij = False
     to_sync, skipped = prepare_shifts(shifts, s)
     assert len(to_sync) == 4
-    assert len(skipped) == 1
     assert skipped[0].shift_type == ShiftType.VRIJ
+
+    s.include_afspraken = False
+    to_sync, skipped = prepare_shifts(shifts, s)
+    assert len(to_sync) == 3
+    assert {x.shift_type for x in skipped} == {ShiftType.VRIJ, ShiftType.AFSPRAAK}
 
 
 def test_sync_skips_duplicates():
@@ -161,6 +211,49 @@ def test_sync_never_adds_same_shift_twice_in_one_run():
     assert len(report.skipped_existing) == 5
 
 
+def test_sync_skips_renamed_item_via_sync_id():
+    """A user renamed the calendar item (added a note to the title): the
+    sync-ID marker must still recognise it, so it is skipped and the user's
+    edit survives a re-import."""
+    s = Settings()
+    s.calendar_name = "Werk"
+    shifts = apply_classification(parse_ics(SAMPLE), s)
+    renamed = shifts[0]
+
+    # In the calendar the item now has a different title, so the legacy
+    # (title, start) key does NOT match — only the marker does.
+    backend = FakeBackend(
+        existing=[("ochtend - tandarts 14u!", renamed.dedupe_key[1])],
+        existing_ids={renamed.sync_id},
+    )
+    report = sync_shifts(shifts, backend, s)
+    assert report.ok
+    assert renamed not in report.added
+    assert renamed in report.skipped_existing
+    assert len(report.added) == 4
+
+
+def test_mark_already_imported_flags_shifts():
+    s = Settings()
+    s.calendar_name = "Werk"
+    shifts = apply_classification(parse_ics(SAMPLE), s)
+    backend = FakeBackend(existing_ids={shifts[1].sync_id, shifts[2].sync_id})
+    count = mark_already_imported(shifts, backend, s)
+    assert count == 2
+    assert [x.already_imported for x in shifts] == [False, True, True, False, False]
+
+
+def test_sync_adds_marker_to_description():
+    s = Settings()
+    s.calendar_name = "Werk"
+    shifts = apply_classification(parse_ics(SAMPLE), s)
+    backend = FakeBackend()
+    sync_shifts(shifts, backend, s)
+    for shift in backend.added:
+        assert marker_for(shift.sync_id) in shift.description
+        assert extract_sync_ids(shift.description) == [shift.sync_id]
+
+
 def test_find_duplicates():
     s = Settings()
     s.calendar_name = "Werk"
@@ -187,7 +280,9 @@ def test_ics_export_roundtrip(tmp_path):
     reparsed = parse_ics(backend.last_output)
     assert len(reparsed) == 5
     summaries = {x.original_summary for x in reparsed}
-    assert {"Ochtend", "Laat", "Nacht", "Vrij"} <= summaries
+    assert {"Ochtend", "Laat", "Nacht", "Vrij", "Overleg team"} <= summaries
     content = backend.last_output.read_text(encoding="utf-8")
     assert "BEGIN:VALARM" in content
     assert "TRIGGER:-PT720M" in content  # ochtend default reminder
+    # The sync-ID marker travels along in the description
+    assert "[WerkroosterSync:" in content

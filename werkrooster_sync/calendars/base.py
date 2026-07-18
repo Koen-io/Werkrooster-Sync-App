@@ -44,10 +44,27 @@ class CalendarBackend(ABC):
         """Dedupe keys (title, yyyymmddhhmm) of all events in the range,
         including duplicates."""
 
-    def existing_keys(
+    def existing_sync_ids(
         self, calendar_name: str, start: datetime, end: datetime
-    ) -> set[tuple[str, str]]:
-        return set(self.existing_keys_list(calendar_name, start, end))
+    ) -> set[str]:
+        """Sync-IDs from [WerkroosterSync:…] markers found in event notes.
+
+        Backends that cannot read notes return an empty set; deduplication
+        then falls back to title + start time.
+        """
+        return set()
+
+    def scan_existing(
+        self, calendar_name: str, start: datetime, end: datetime
+    ) -> tuple[list[tuple[str, str]], set[str]]:
+        """One combined scan: (dedupe keys, sync-IDs) of events in the range.
+
+        Backends override this when both can be fetched in a single query.
+        """
+        return (
+            self.existing_keys_list(calendar_name, start, end),
+            self.existing_sync_ids(calendar_name, start, end),
+        )
 
     def remove_duplicates(self, calendar_name: str, start: datetime, end: datetime) -> int:
         """Delete surplus copies of duplicated events. Returns number removed.
