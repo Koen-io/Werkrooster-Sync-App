@@ -1,4 +1,6 @@
-"""Settings dialog with tabs: calendar, naming & reminders, rules, maintenance."""
+"""In-app settings panel with tabs: calendar, naming & reminders, rules,
+maintenance. Shown inside the main window (no separate dialog); Opslaan and
+Annuleren emit signals that return the user to the main view."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -8,7 +10,6 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDateEdit,
-    QDialog,
     QFormLayout,
     QFrame,
     QGridLayout,
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
     QTabWidget,
     QVBoxLayout,
@@ -77,30 +79,36 @@ class _Worker(QThread):
             self.failed.emit(f"Onverwachte fout: {exc}")
 
 
-class SettingsDialog(QDialog):
+class SettingsPanel(QWidget):
+    """Full-window settings page embedded in the main window."""
+
+    saved = Signal()
+    cancelled = Signal()
+
     def __init__(self, settings: Settings, parent=None):
         super().__init__(parent)
         self.settings = settings
         self._worker: _Worker | None = None
-        self.setWindowTitle("Instellingen")
-        self.setMinimumSize(860, 620)
-        self.setStyleSheet(theme.QSS)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(16)
+
+        title = QLabel("Instellingen")
+        title.setObjectName("appTitle")
+        layout.addWidget(title)
 
         tabs = QTabWidget()
         tabs.addTab(self._build_calendar_tab(), "Agenda")
         tabs.addTab(self._build_naming_tab(), "Namen && herinneringen")
         tabs.addTab(self._build_rules_tab(), "Herkenning")
         tabs.addTab(self._build_maintenance_tab(), "Onderhoud")
-        layout.addWidget(tabs)
+        layout.addWidget(tabs, stretch=1)
 
         buttons = QHBoxLayout()
         buttons.addStretch()
         cancel = QPushButton("Annuleren")
-        cancel.clicked.connect(self.reject)
+        cancel.clicked.connect(self.cancelled.emit)
         save = QPushButton("Opslaan")
         save.setObjectName("primary")
         save.setStyleSheet("QPushButton#primary { padding: 10px 24px; font-size: 14px; }")
@@ -140,12 +148,21 @@ class SettingsDialog(QDialog):
         refresh = QPushButton("Ververs lijst")
         refresh.clicked.connect(self._load_calendars)
 
+        # Both dropdowns grow to the full available width; the Ververs button
+        # keeps its natural size next to the calendar dropdown.
+        for combo in (self.backend_combo, self.calendar_combo):
+            combo.setSizePolicy(
+                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+            )
+            combo.setMinimumWidth(320)
+
         cal_row = QHBoxLayout()
         cal_row.addWidget(self.calendar_combo, stretch=1)
         cal_row.addWidget(refresh)
 
         f = QFormLayout()
         f.setSpacing(12)
+        f.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         f.addRow("Agenda-app:", self.backend_combo)
         f.addRow("Agenda:", cal_row)
         form.addLayout(f)
@@ -721,4 +738,4 @@ class SettingsDialog(QDialog):
         for key, (s1, s2) in self.window_spins.items():
             s.rules["time_windows"][key] = [s1.value(), s2.value()]
         s.save()
-        self.accept()
+        self.saved.emit()

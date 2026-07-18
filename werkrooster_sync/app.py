@@ -37,11 +37,12 @@ def _make_splash(app):
     return splash
 
 
-def _center_on_screen(app, window) -> None:
+def _position_half_screen(app, window) -> None:
+    """Half the screen wide, full available height, centered horizontally."""
     screen = app.primaryScreen().availableGeometry()
-    frame = window.frameGeometry()
-    frame.moveCenter(screen.center())
-    window.move(frame.topLeft())
+    width = screen.width() // 2
+    window.resize(width, screen.height())
+    window.move(screen.x() + (screen.width() - width) // 2, screen.y())
 
 
 def main() -> int:
@@ -72,7 +73,7 @@ def main() -> int:
 
     def show_main() -> None:
         # Front and centre at startup; after that the window behaves normally.
-        _center_on_screen(app, window)
+        _position_half_screen(app, window)
         window.show()
         window.raise_()
         window.activateWindow()

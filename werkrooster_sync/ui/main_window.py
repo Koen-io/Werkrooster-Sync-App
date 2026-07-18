@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QProgressBar,
     QPushButton,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -23,7 +24,7 @@ from ..core.models import Shift, ShiftType, SyncReport
 from ..core.settings import Settings
 from ..core.sync import mark_already_imported, sync_shifts
 from . import theme
-from .settings_dialog import SettingsDialog, _Worker
+from .settings_dialog import SettingsPanel, _Worker
 from .widgets import CountChip, DropZone
 
 WEEKDAYS = ["ma", "di", "wo", "do", "vr", "za", "zo"]
@@ -66,9 +67,12 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(680, 720)
         self.setStyleSheet(theme.QSS)
 
-        central = QWidget()
-        self.setCentralWidget(central)
-        root = QVBoxLayout(central)
+        # Stacked pages: 0 = main view, 1 = the in-app settings panel.
+        self._stack = QStackedWidget()
+        self.setCentralWidget(self._stack)
+        main_page = QWidget()
+        self._stack.addWidget(main_page)
+        root = QVBoxLayout(main_page)
         root.setContentsMargins(28, 24, 28, 24)
         root.setSpacing(18)
 
@@ -261,14 +265,27 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------------
     def open_settings(self) -> None:
-        dialog = SettingsDialog(self.settings, self)
-        if dialog.exec():
+        """Show the settings as a full-window page inside the app."""
+        panel = SettingsPanel(self.settings)
+        self._stack.addWidget(panel)
+        self._stack.setCurrentWidget(panel)
+
+        def close_panel() -> None:
+            self._stack.setCurrentIndex(0)
+            self._stack.removeWidget(panel)
+            panel.deleteLater()
+
+        def on_saved() -> None:
             self.settings = Settings.load()
             if self.shifts:
                 self.shifts = apply_classification(self.shifts, self.settings)
                 self._refresh_preview()
                 self._auto_check_duplicates()
             self._set_status("Instellingen opgeslagen.", "statusOk")
+            close_panel()
+
+        panel.saved.connect(on_saved)
+        panel.cancelled.connect(close_panel)
 
     # ------------------------------------------------------------------
     def start_sync(self) -> None:
