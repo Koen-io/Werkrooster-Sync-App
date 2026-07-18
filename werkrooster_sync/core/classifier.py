@@ -163,6 +163,11 @@ def apply_classification(shifts: list[Shift], settings: Settings) -> list[Shift]
         else:
             shift.reminder_minutes = settings.reminder_for(shift.shift_type)
             if settings.display_for(shift.shift_type) == "all_day":
+                if not shift.all_day:
+                    # Keep the real shift times visible in the item's notes.
+                    times = f"Diensttijden: {shift.start:%H:%M}–{shift.end:%H:%M}"
+                    if times not in shift.description:
+                        shift.description = f"{times}\n{shift.description}".strip()
                 shift.all_day = True
 
         # The sync-ID is derived from the roster event itself (not from the

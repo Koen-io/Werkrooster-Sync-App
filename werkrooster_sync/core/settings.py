@@ -138,22 +138,23 @@ DEFAULT_RULES: dict[str, Any] = {
 
 DEFAULT_REMINDERS: dict[str, dict[str, Any]] = {
     ShiftType.VRIJ.value: {"enabled": False, "minutes": 0},
-    ShiftType.OCHTEND.value: {"enabled": True, "minutes": 720},
-    ShiftType.LAAT.value: {"enabled": True, "minutes": 120},
-    ShiftType.NACHT.value: {"enabled": True, "minutes": 240},
-    ShiftType.DIENST.value: {"enabled": True, "minutes": 120},
+    ShiftType.OCHTEND.value: {"enabled": True, "minutes": 60},
+    ShiftType.LAAT.value: {"enabled": True, "minutes": 60},
+    ShiftType.NACHT.value: {"enabled": True, "minutes": 60},
+    ShiftType.DIENST.value: {"enabled": True, "minutes": 60},
     ShiftType.AFSPRAAK.value: {"enabled": True, "minutes": 30},
     ShiftType.NEGEREN.value: {"enabled": False, "minutes": 0},
 }
 
 #: How each shift type appears in the calendar: "all_day" (an item at the top
-#: of the day) or "timed" (a block at the exact shift times).
+#: of the day) or "timed" (a block at the exact shift times). Everything is a
+#: whole-day item except loose appointments, which keep their exact times.
 DEFAULT_DISPLAY: dict[str, str] = {
     ShiftType.VRIJ.value: "all_day",
-    ShiftType.OCHTEND.value: "timed",
-    ShiftType.LAAT.value: "timed",
-    ShiftType.NACHT.value: "timed",
-    ShiftType.DIENST.value: "timed",
+    ShiftType.OCHTEND.value: "all_day",
+    ShiftType.LAAT.value: "all_day",
+    ShiftType.NACHT.value: "all_day",
+    ShiftType.DIENST.value: "all_day",
     ShiftType.AFSPRAAK.value: "timed",
     ShiftType.NEGEREN.value: "timed",
 }
