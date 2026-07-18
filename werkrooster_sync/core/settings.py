@@ -140,6 +140,9 @@ class Settings:
     )
     include_vrij: bool = True
     include_afspraken: bool = True
+    #: During sync: automatically delete an outdated concept item when a new
+    #: (definitive or updated concept) shift arrives for the same day.
+    replace_concept: bool = True
     display: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_DISPLAY))
     rules: dict[str, Any] = field(
         default_factory=lambda: json.loads(json.dumps(DEFAULT_RULES))
@@ -168,6 +171,7 @@ class Settings:
             "reminders": self.reminders,
             "include_vrij": self.include_vrij,
             "include_afspraken": self.include_afspraken,
+            "replace_concept": self.replace_concept,
             "display": self.display,
             "rules": self.rules,
             "theme": self.theme,

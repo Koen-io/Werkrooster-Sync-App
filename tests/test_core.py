@@ -219,10 +219,12 @@ class FakeBackend(CalendarBackend):
     id = "fake"
     label = "Fake"
 
-    def __init__(self, existing=None, existing_ids=None):
+    def __init__(self, existing=None, existing_ids=None, events=None):
         self.added: list[Shift] = []
+        self.removed_ids: set[str] = set()
         self._existing = existing or []
         self._existing_ids = set(existing_ids or [])
+        self._events = list(events or [])
 
     def is_available(self):
         return True
@@ -238,6 +240,13 @@ class FakeBackend(CalendarBackend):
 
     def existing_sync_ids(self, calendar_name, start, end):
         return set(self._existing_ids)
+
+    def scan_events(self, calendar_name, start, end):
+        return super().scan_events(calendar_name, start, end) + list(self._events)
+
+    def remove_by_sync_ids(self, calendar_name, start, end, sync_ids):
+        self.removed_ids |= set(sync_ids)
+        return len(sync_ids)
 
 
 def test_prepare_shifts_respects_vrij_and_afspraak_settings():
@@ -328,6 +337,105 @@ def test_sync_adds_marker_to_description():
     for shift in backend.added:
         assert marker_for(shift.sync_id) in shift.description
         assert extract_sync_ids(shift.description) == [shift.sync_id]
+
+
+def _dienst_shift(day: int, summary: str) -> Shift:
+    return make_shift(
+        datetime(2026, 8, day), datetime(2026, 8, day + 1), summary, all_day=True
+    )
+
+
+def _concept_event(day: int, sync_id: str):
+    from werkrooster_sync.calendars.base import ExistingEvent
+
+    return ExistingEvent(
+        "laat (concept)", f"202608{day:02d}1400", sync_id, concept=True
+    )
+
+
+def test_definitive_shift_replaces_concept_item():
+    s = Settings()
+    s.calendar_name = "Werk"
+    shifts = apply_classification(
+        [_dienst_shift(5, "[R] 12345678 DIENST 07:00 - 16:00")], s
+    )
+    backend = FakeBackend(events=[_concept_event(5, "oldconcept01")])
+    report = sync_shifts(shifts, backend, s)
+    assert report.ok
+    assert backend.removed_ids == {"oldconcept01"}
+    assert report.concept_removed == 1
+    assert len(report.added) == 1
+    assert report.replaced == [shifts[0]]
+
+
+def test_updated_concept_replaces_older_concept():
+    s = Settings()
+    s.calendar_name = "Werk"
+    shifts = apply_classification(
+        [_dienst_shift(5, "[C1] 12345678 DIENST 15:00 - 23:30")], s
+    )
+    backend = FakeBackend(events=[_concept_event(5, "oldconcept01")])
+    report = sync_shifts(shifts, backend, s)
+    assert backend.removed_ids == {"oldconcept01"}
+    assert len(report.added) == 1
+    # The new concept item carries the concept tag for the next round.
+    from werkrooster_sync.core.models import CONCEPT_TAG
+
+    assert CONCEPT_TAG in backend.added[0].description
+
+
+def test_unchanged_concept_import_deletes_nothing():
+    s = Settings()
+    s.calendar_name = "Werk"
+    shifts = apply_classification(
+        [_dienst_shift(5, "[C1] 12345678 DIENST 15:00 - 23:30")], s
+    )
+    backend = FakeBackend(events=[_concept_event(5, shifts[0].sync_id)])
+    report = sync_shifts(shifts, backend, s)
+    assert backend.removed_ids == set()
+    assert not report.added
+    assert len(report.skipped_existing) == 1
+
+
+def test_afspraak_never_triggers_replacement():
+    s = Settings()
+    s.calendar_name = "Werk"
+    shifts = apply_classification(
+        [make_shift(datetime(2026, 8, 5, 12, 30), datetime(2026, 8, 5, 13, 0), "Briefing")], s
+    )
+    backend = FakeBackend(events=[_concept_event(5, "oldconcept01")])
+    report = sync_shifts(shifts, backend, s)
+    assert backend.removed_ids == set()
+    assert len(report.added) == 1
+    assert report.concept_removed == 0
+
+
+def test_replacement_can_be_disabled():
+    s = Settings()
+    s.calendar_name = "Werk"
+    s.replace_concept = False
+    shifts = apply_classification(
+        [_dienst_shift(5, "[R] 12345678 DIENST 07:00 - 16:00")], s
+    )
+    backend = FakeBackend(events=[_concept_event(5, "oldconcept01")])
+    report = sync_shifts(shifts, backend, s)
+    assert backend.removed_ids == set()
+    assert len(report.added) == 1
+
+
+def test_definitive_items_are_never_deleted():
+    from werkrooster_sync.calendars.base import ExistingEvent
+
+    s = Settings()
+    s.calendar_name = "Werk"
+    shifts = apply_classification(
+        [_dienst_shift(5, "[R] 12345678 DIENST 07:00 - 16:00")], s
+    )
+    definitive = ExistingEvent("ochtend", "202608050700", "definitief01", concept=False)
+    backend = FakeBackend(events=[definitive])
+    report = sync_shifts(shifts, backend, s)
+    assert backend.removed_ids == set()
+    assert report.concept_removed == 0
 
 
 def test_find_duplicates():

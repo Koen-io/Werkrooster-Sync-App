@@ -354,6 +354,13 @@ class SettingsDialog(QDialog):
         )
         outer.addWidget(self.mark_concept_check)
 
+        self.replace_concept_check = QCheckBox(
+            "Conceptdiensten automatisch vervangen zodra het definitieve (of een "
+            "nieuwer concept-) rooster wordt geïmporteerd"
+        )
+        self.replace_concept_check.setChecked(self.settings.replace_concept)
+        outer.addWidget(self.replace_concept_check)
+
         time_lbl = QLabel("Begintijd-regels (als geen woord past)")
         time_lbl.setObjectName("sectionTitle")
         outer.addWidget(time_lbl)
@@ -697,6 +704,7 @@ class SettingsDialog(QDialog):
         s.rules["min_shift_hours"] = self.min_shift_spin.value()
         s.rules["parse_times_from_title"] = self.parse_times_check.isChecked()
         s.rules["mark_concept"] = self.mark_concept_check.isChecked()
+        s.replace_concept = self.replace_concept_check.isChecked()
         s.rules.setdefault("keywords", {})
         for key, edit in self.keyword_edits.items():
             s.rules["keywords"][key] = [

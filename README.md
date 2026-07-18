@@ -28,6 +28,11 @@ Alles draait volledig lokaal; er is geen internetverbinding of account nodig.
   tevoren, ochtenddienst de avond ervoor), of uit.
 - **Vrije dagen en afspraken optioneel** — kies zelf of "Vrij" en losse
   afspraken in je agenda komen.
+- **Conceptdiensten vervangen zichzelf** — diensten uit een conceptrooster
+  ([C1]/[C2]) worden gemarkeerd met "(concept)". Zodra je het definitieve (of
+  een nieuwer concept-) rooster importeert, worden de verouderde conceptitems
+  van die dagen automatisch vervangen — je eigen afspraken en definitieve
+  diensten blijven altijd staan.
 - **Geen dubbele items, gegarandeerd** — elk item dat de app aanmaakt krijgt een
   onzichtbare code (`[WerkroosterSync:…]`) in de notities. Bij het laden van een
   rooster controleert de app automatisch je agenda: wat er al staat wordt rood

@@ -61,6 +61,10 @@ DEFAULT_NAMES: dict[ShiftType, str] = {
 # ----------------------------------------------------------------------
 MARKER_RE = re.compile(r"\[WerkroosterSync:([0-9a-f]{12})\]")
 
+#: Extra tag on items that came from a concept roster ([C1]/[C2]); lets the
+#: app replace them automatically once the definitive roster is imported.
+CONCEPT_TAG = "[WerkroosterSync-concept]"
+
 
 def make_sync_id(uid: str, summary: str, start: datetime, end: datetime) -> str:
     # Deliberately date-based (not time-based): roster exports hide the real
@@ -95,6 +99,7 @@ class Shift:
     reminder_minutes: Optional[int] = None  # None = no reminder
     sync_id: str = ""
     already_imported: bool = False  # set by the automatic duplicate check
+    is_concept: bool = False  # roster item from a concept period ([C1]/[C2])
 
     @property
     def dedupe_key(self) -> tuple[str, str]:
@@ -110,6 +115,10 @@ class SyncReport:
     added: list[Shift] = field(default_factory=list)
     skipped_existing: list[Shift] = field(default_factory=list)
     skipped_by_settings: list[Shift] = field(default_factory=list)
+    #: Shifts that took the place of an outdated concept item.
+    replaced: list[Shift] = field(default_factory=list)
+    #: Number of outdated concept items removed from the calendar.
+    concept_removed: int = 0
     errors: list[str] = field(default_factory=list)
 
     @property
