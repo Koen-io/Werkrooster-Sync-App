@@ -1,2 +1,86 @@
-# Werkrooster-Sync-App-windows-mac-
-Werkrooster Sync App (windows+mac)
+# Werkrooster Sync
+
+Zet je werkrooster (.ics-bestand) in één klik in je agenda — op **macOS** én **Windows**.
+
+De app herkent automatisch wat voor dienst elk roosteritem is en zet het met een
+duidelijke naam in je agenda: **Vrij**, **Ochtend**, **Laat**, **Nacht** of **Dienst**.
+Alles draait volledig lokaal; er is geen internetverbinding of account nodig.
+
+| Hoofdscherm | Instellingen |
+|---|---|
+| ![Hoofdscherm](docs/screenshots/hoofdscherm.png) | ![Instellingen](docs/screenshots/instellingen.png) |
+
+## Functies
+
+- **Slepen & klaar** — sleep je .ics-rooster in het venster (of klik om te bladeren),
+  bekijk de herkende diensten en druk op de grote knop *Synchroniseer naar agenda*.
+- **Automatische herkenning** — diensten worden herkend op trefwoorden in de titel
+  én op begintijd (standaard: ochtend 05–12 u, laat 12–20 u, nacht 20–05 u).
+  Beide zijn instelbaar.
+- **Eigen namen** — pas per dienstsoort de naam aan die in je agenda komt
+  (bijv. "Vroege dienst 🌅" i.p.v. "Ochtend").
+- **Herinneringen** — per dienstsoort instelbaar (bijv. nachtdienst 4 uur van
+  tevoren, ochtenddienst de avond ervoor), of uit.
+- **Vrije dagen optioneel** — kies zelf of "Vrij" in je agenda komt, en of dat
+  als hele-dag-item gebeurt.
+- **Geen dubbele items** — bij het synchroniseren wordt alles wat er al staat
+  automatisch overgeslagen. Via *Instellingen → Onderhoud* kun je bovendien je
+  agenda controleren op dubbele items en ze in één keer opruimen.
+- **Portable** — instellingen worden opgeslagen in een `settings.json` naast de
+  app; kopieer de app (mét dat bestand) naar een andere computer en alles werkt
+  direct hetzelfde.
+
+## Welke agenda-apps?
+
+| Platform | Koppeling | Werkt met |
+|---|---|---|
+| macOS | Apple **Agenda** (automatisch aangestuurd) | iCloud, Google, Exchange, CalDAV — elk account dat in Agenda staat |
+| Windows | Microsoft **Outlook** (automatisch aangestuurd) | Exchange / Microsoft 365 / Outlook.com — elk account dat in Outlook staat |
+| Overal | **.ics-export** | Elke andere agenda-app: de app zet een opgeschoond .ics-bestand klaar en opent het in je standaard agenda-app (Google Agenda, Thunderbird, Windows Agenda, …) |
+
+Je kiest de koppeling en de doelagenda in *Instellingen → Agenda*.
+
+> **Eerste keer op een Mac:** macOS vraagt eenmalig om toestemming om Agenda aan
+> te sturen. Klik op *Sta toe*. Later aan te passen via *Systeeminstellingen →
+> Privacy en beveiliging → Automatisering*.
+
+## Downloaden / bouwen
+
+Elke push naar `main` bouwt automatisch beide apps via GitHub Actions
+(*Actions → Test & build apps → Artifacts*):
+
+- `WerkroosterSync-macOS.zip` — uitpakken → **Werkrooster Sync.app**, kopieer waar je wilt.
+- `WerkroosterSync-Windows` — **WerkroosterSync.exe**, één portable bestand, geen installatie.
+
+Zelf bouwen kan ook:
+
+```bash
+# macOS (op een Mac)
+./packaging/build_mac.sh          # → dist/Werkrooster Sync.app
+
+# Windows (op een Windows-pc)
+packaging\build_win.bat           # → dist\WerkroosterSync.exe
+```
+
+## Ontwikkelen
+
+```bash
+pip install -r requirements-dev.txt
+python run_app.py                 # start de app
+pytest tests/                     # draai de tests
+```
+
+De code is één gedeelde Python/Qt-codebase:
+
+```
+werkrooster_sync/
+├── core/        rooster inlezen (ics_parser), dienst herkennen (classifier),
+│                instellingen (settings), synchroniseren + ontdubbelen (sync)
+├── calendars/   agenda-koppelingen: Apple Agenda (AppleScript), Outlook (COM),
+│                universele .ics-export
+└── ui/          PySide6-interface: hoofdvenster, drag-&-drop, instellingen
+```
+
+Nieuwe agenda-koppelingen toevoegen = één subclass van
+`calendars/base.py::CalendarBackend` implementeren en registreren in
+`calendars/registry.py`.
