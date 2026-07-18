@@ -33,12 +33,17 @@ a = Analysis(
     ["run_app.py"],
     pathex=["."],
     binaries=[],
-    datas=[],
+    datas=[("assets", "assets")],
     hiddenimports=hiddenimports,
     excludes=excludes,
     noarchive=False,
 )
 pyz = PYZ(a.pure)
+
+import os
+
+ICON_WIN = os.path.join("assets", "icon.ico")
+ICON_MAC = os.path.join("assets", "icon.icns")
 
 if IS_WIN:
     # Single-file portable .exe
@@ -50,7 +55,7 @@ if IS_WIN:
         name="WerkroosterSync",
         console=False,
         upx=False,
-        icon=None,
+        icon=ICON_WIN if os.path.exists(ICON_WIN) else None,
     )
 else:
     exe = EXE(
@@ -72,7 +77,7 @@ else:
         app = BUNDLE(
             coll,
             name="Werkrooster Sync.app",
-            icon=None,
+            icon=ICON_MAC if os.path.exists(ICON_MAC) else None,
             bundle_identifier="nl.werkroostersync.app",
             info_plist={
                 "CFBundleName": "Werkrooster Sync",
