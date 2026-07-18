@@ -78,6 +78,9 @@ DEFAULT_RULES: dict[str, Any] = {
         # "dienst" is the fallback category; generic words like "dienst" must
         # not override the start-time rules, so no default keywords here.
         ShiftType.DIENST.value: [],
+        # Items that keep their own title (with times stripped), like sick
+        # leave from the PDF roster ("ZIEK 10:00-17:36" -> "ZIEK").
+        ShiftType.AFSPRAAK.value: ["ziek", "cursus", "opleiding", "training"],
         # Roster noise that should never reach the calendar. [Rust] blocks are
         # the rest periods BVCM exports around every shift; birthdays come
         # from Outlook's contacts calendar riding along in the export.
@@ -101,6 +104,10 @@ DEFAULT_RULES: dict[str, Any] = {
     # Shifts from a concept roster ([C1]/[C2] prefix) get a " (concept)"
     # suffix in the calendar so they are recognisable as not-yet-definitive.
     "mark_concept": True,
+    # PDF rosters leave free days empty (definitive) or fill them with a
+    # full-day [Rust] block (concept); treat such days as Vrij, matching the
+    # ICS export which lists free days explicitly.
+    "empty_day_is_vrij": True,
 }
 
 DEFAULT_REMINDERS: dict[str, dict[str, Any]] = {
@@ -199,7 +206,12 @@ class Settings:
             s.rules["keywords"].setdefault(
                 t.value, list(DEFAULT_RULES["keywords"].get(t.value, []))
             )
-        for key in ("min_shift_hours", "parse_times_from_title", "mark_concept"):
+        for key in (
+            "min_shift_hours",
+            "parse_times_from_title",
+            "mark_concept",
+            "empty_day_is_vrij",
+        ):
             s.rules.setdefault(key, DEFAULT_RULES[key])
         return s
 

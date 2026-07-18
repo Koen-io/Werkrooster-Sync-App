@@ -326,8 +326,6 @@ class SettingsDialog(QDialog):
         self.keyword_edits: dict[str, QLineEdit] = {}
         keywords = self.settings.rules.get("keywords", {})
         for shift_type in ShiftType.ordered():
-            if shift_type == ShiftType.AFSPRAAK:
-                continue  # afspraken are recognised by duration, not keywords
             key = shift_type.value
             edit = QLineEdit(", ".join(keywords.get(key, [])))
             color = theme.SHIFT_COLORS[shift_type]
@@ -336,6 +334,14 @@ class SettingsDialog(QDialog):
             form.addRow(lbl, edit)
             self.keyword_edits[key] = edit
         outer.addLayout(form)
+
+        self.empty_day_check = QCheckBox(
+            "Lege dagen (of hele dag [Rust]) in een PDF-rooster als Vrij aanmerken"
+        )
+        self.empty_day_check.setChecked(
+            bool(self.settings.rules.get("empty_day_is_vrij", True))
+        )
+        outer.addWidget(self.empty_day_check)
 
         self.parse_times_check = QCheckBox(
             "Tijden uit de titel halen (bijv. “DIENST 07:00 - 16:00” op een "
@@ -704,6 +710,7 @@ class SettingsDialog(QDialog):
         s.rules["min_shift_hours"] = self.min_shift_spin.value()
         s.rules["parse_times_from_title"] = self.parse_times_check.isChecked()
         s.rules["mark_concept"] = self.mark_concept_check.isChecked()
+        s.rules["empty_day_is_vrij"] = self.empty_day_check.isChecked()
         s.replace_concept = self.replace_concept_check.isChecked()
         s.rules.setdefault("keywords", {})
         for key, edit in self.keyword_edits.items():

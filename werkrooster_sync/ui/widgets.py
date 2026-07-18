@@ -50,7 +50,7 @@ class DropZone(QFrame):
         icon.setStyleSheet("font-size: 44px; background: transparent; border: none;")
         icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        title = QLabel("Sleep je .ics-rooster hierheen")
+        title = QLabel("Sleep je rooster hierheen (.ics of .pdf)")
         title.setStyleSheet(
             f"font-size: 18px; font-weight: 700; color: {theme.TEXT};"
             "background: transparent; border: none;"
@@ -71,7 +71,10 @@ class DropZone(QFrame):
     # ------------------------------------------------------------------
     def mousePressEvent(self, event):
         path, _ = QFileDialog.getOpenFileName(
-            self, "Kies je rooster", str(Path.home()), "Agenda-bestanden (*.ics)"
+            self,
+            "Kies je rooster",
+            str(Path.home()),
+            "Roosterbestanden (*.ics *.pdf)",
         )
         if path:
             self.file_selected.emit(path)
@@ -97,7 +100,7 @@ class DropZone(QFrame):
         if mime.hasUrls():
             for url in mime.urls():
                 local = url.toLocalFile()
-                if local.lower().endswith(".ics"):
+                if local.lower().endswith((".ics", ".pdf")):
                     return local
         return None
 

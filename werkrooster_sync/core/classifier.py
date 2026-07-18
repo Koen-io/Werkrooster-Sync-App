@@ -79,7 +79,13 @@ def classify(shift: Shift, settings: Settings) -> ShiftType:
     if _keyword_match(shift.original_summary, keywords.get(ShiftType.VRIJ.value, [])):
         return ShiftType.VRIJ
 
-    for t in (ShiftType.OCHTEND, ShiftType.LAAT, ShiftType.NACHT, ShiftType.DIENST):
+    for t in (
+        ShiftType.OCHTEND,
+        ShiftType.LAAT,
+        ShiftType.NACHT,
+        ShiftType.DIENST,
+        ShiftType.AFSPRAAK,  # e.g. "ziek": keeps its own title
+    ):
         if _keyword_match(shift.original_summary, keywords.get(t.value, [])):
             return t
 
@@ -116,18 +122,24 @@ def apply_classification(shifts: list[Shift], settings: Settings) -> list[Shift]
     for shift in shifts:
         extract_summary_times(shift, settings)
         shift.shift_type = classify(shift, settings)
-        shift.is_concept = bool(_CONCEPT_RE.match(shift.original_summary))
+        # Keep a concept flag set by the parser (PDF rosters carry it in the
+        # document title instead of per-item [C1]/[C2] prefixes).
+        shift.is_concept = shift.is_concept or bool(
+            _CONCEPT_RE.match(shift.original_summary)
+        )
 
         if shift.shift_type in (ShiftType.AFSPRAAK, ShiftType.NEGEREN):
-            # These keep their own title from the roster.
-            shift.display_name = shift.original_summary or settings.name_for(
-                shift.shift_type
-            )
+            # These keep their own title from the roster; for appointments the
+            # time range is stripped ("ZIEK 10:00-17:36" -> "ZIEK") since the
+            # calendar item itself carries the times.
+            title = shift.original_summary
+            if shift.shift_type == ShiftType.AFSPRAAK:
+                title = _TIME_RANGE_RE.sub("", title)
+                title = re.sub(r"\s+", " ", title).strip(" -–—")
+            shift.display_name = title or settings.name_for(shift.shift_type)
         else:
             shift.display_name = settings.name_for(shift.shift_type)
-            if settings.rules.get("mark_concept", True) and _CONCEPT_RE.match(
-                shift.original_summary
-            ):
+            if settings.rules.get("mark_concept", True) and shift.is_concept:
                 shift.display_name += " (concept)"
 
         if shift.shift_type == ShiftType.NEGEREN:

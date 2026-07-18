@@ -1,6 +1,6 @@
 # Werkrooster Sync
 
-Zet je werkrooster (.ics-bestand) in één klik in je agenda — op **macOS** én **Windows**.
+Zet je werkrooster (.ics- óf PDF-bestand) in één klik in je agenda — op **macOS** én **Windows**.
 
 De app herkent automatisch wat voor dienst elk roosteritem is en zet het met een
 duidelijke naam in je agenda: **Vrij**, **Ochtend**, **Laat**, **Nacht** of **Dienst**.
@@ -12,8 +12,12 @@ Alles draait volledig lokaal; er is geen internetverbinding of account nodig.
 
 ## Functies
 
-- **Slepen & klaar** — sleep je .ics-rooster in het venster (of klik om te bladeren),
+- **Slepen & klaar** — sleep je rooster in het venster (of klik om te bladeren),
   bekijk de herkende diensten en druk op de grote knop *Synchroniseer naar agenda*.
+- **Twee bestandsformaten, één knop** — zowel de agenda-export (.ics) als het
+  "Medewerker Rooster"-PDF (definitief én concept) worden herkend en identiek
+  verwerkt. Lege dagen of hele-dag-[Rust] in een PDF tellen als Vrij
+  (instelbaar); memo's uit de PDF komen als notitie bij het agenda-item.
 - **Automatische herkenning** — diensten worden herkend op trefwoorden in de titel
   én op begintijd (standaard: ochtend 05–12 u, laat 12–20 u, nacht 20–05 u).
   Beide zijn instelbaar.

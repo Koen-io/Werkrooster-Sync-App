@@ -80,7 +80,7 @@ def main() -> int:
     window = MainWindow()
 
     pending_file = next(
-        (arg for arg in sys.argv[1:] if arg.lower().endswith(".ics")), None
+        (arg for arg in sys.argv[1:] if arg.lower().endswith((".ics", ".pdf"))), None
     )
 
     def show_main() -> None:
