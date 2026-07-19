@@ -35,9 +35,13 @@ RELEASES_API = (
 RELEASES_PAGE = "https://github.com/Koen-io/Werkrooster-Sync-App/releases/latest"
 _TIMEOUT = 15
 
-#: A real User-Agent is required: GitHub's API rejects requests without one,
-#: and Cloudflare (in front of Web3Forms) blocks Python's default UA with 403.
-USER_AGENT = f"WerkroosterSync/{__version__} (+https://github.com/Koen-io/Werkrooster-Sync-App)"
+#: A real browser User-Agent: GitHub's API rejects requests without any UA,
+#: and Cloudflare bot-detection scores a custom/script UA as suspicious — a
+#: genuine browser string is treated far more leniently.
+USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+)
 
 
 class UpdateError(Exception):
