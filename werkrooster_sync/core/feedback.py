@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import urllib.request
 
-from .updater import _ssl_context
+from .updater import USER_AGENT, _ssl_context
 
 _ENDPOINT = "https://api.web3forms.com/submit"
 _ACCESS_KEY = "e8774a01-016e-498a-ad03-0075a0b631f6"
@@ -45,7 +45,13 @@ def send_feedback(name: str, message: str, email: str = "", app_version: str = "
     req = urllib.request.Request(
         _ENDPOINT,
         data=data,
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            # Cloudflare (in front of Web3Forms) returns 403 for the default
+            # Python user-agent, so present a real one.
+            "User-Agent": USER_AGENT,
+        },
     )
     try:
         with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:

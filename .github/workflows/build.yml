@@ -90,20 +90,37 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+      - name: Build release notes from CHANGELOG
+        shell: bash
+        run: |
+          TAG="${{ inputs.release_tag || github.ref_name }}"
+          # Extract the section for this tag from CHANGELOG.md (the lines
+          # under "## <tag>" up to the next "## "). This becomes the release
+          # body shown in the in-app update popup — the "what's new" notes.
+          NOTES=$(awk -v tag="## ${TAG}" '
+            $0==tag {grab=1; next}
+            /^## / {grab=0}
+            grab {print}
+          ' CHANGELOG.md | sed '/^[[:space:]]*$/d')
+          if [ -z "$NOTES" ]; then
+            NOTES="Nieuwe versie van Werkrooster Sync."
+          fi
+          {
+            echo "### Wat is er nieuw in ${TAG}"
+            echo ""
+            echo "$NOTES"
+          } > RELEASE_NOTES.md
+          cat RELEASE_NOTES.md
       - name: Publish release with both apps
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.release_tag || github.ref_name }}
           name: Werkrooster Sync ${{ inputs.release_tag || github.ref_name }}
-          body: |
-            **Werkrooster Sync** — zet je BVCM-rooster (.ics of PDF) in één klik in je agenda.
-
-            ## Downloads
-            - **macOS**: `WerkroosterSync-macOS.zip` → uitpakken → *Werkrooster Sync.app* (eerste keer: rechtermuisklik → Open)
-            - **Windows**: `WerkroosterSync.exe` → één portable bestand, geen installatie (SmartScreen: *Meer informatie → Toch uitvoeren*)
+          body_path: RELEASE_NOTES.md
           files: |
             artifacts/WerkroosterSync-macOS/WerkroosterSync-macOS.zip
             artifacts/WerkroosterSync-Windows/WerkroosterSync.exe

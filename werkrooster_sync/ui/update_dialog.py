@@ -171,6 +171,7 @@ class UpdateDialog(QDialog):
             notes = QLabel(self._plain_notes(update.notes))
             notes.setWordWrap(True)
             notes.setObjectName("statusDim")
+            notes.setStyleSheet(f"color: {theme.TEXT}; font-size: 14px;")
             notes.setMinimumHeight(70)
             layout.addWidget(notes)
         layout.addStretch()
