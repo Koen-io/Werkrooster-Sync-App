@@ -175,12 +175,25 @@ class MainWindow(QMainWindow):
         self.status.setWordWrap(True)
         root.addWidget(self.status)
 
+        bottom_row = QHBoxLayout()
+        bottom_row.setSpacing(10)
         self.sync_btn = QPushButton("Synchroniseer naar agenda")
         self.sync_btn.setObjectName("primary")
         self.sync_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.sync_btn.setEnabled(False)
         self.sync_btn.clicked.connect(self.start_sync)
-        root.addWidget(self.sync_btn)
+        bottom_row.addWidget(self.sync_btn, stretch=1)
+
+        self.reset_btn = QPushButton("↺  Opnieuw")
+        self.reset_btn.setObjectName("secondary")
+        self.reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.reset_btn.setToolTip(
+            "Wis het geladen rooster en begin opnieuw (instellingen blijven staan)."
+        )
+        self.reset_btn.setEnabled(False)
+        self.reset_btn.clicked.connect(self.reset_file)
+        bottom_row.addWidget(self.reset_btn)
+        root.addLayout(bottom_row)
 
         self._load_calendars()
 
@@ -258,6 +271,7 @@ class MainWindow(QMainWindow):
         self.shifts = apply_classification(shifts, self.settings)
         self._refresh_preview()
         self.sync_btn.setEnabled(True)
+        self.reset_btn.setEnabled(True)
         first = min(s.start for s in self.shifts)
         last = max(s.start for s in self.shifts)
         ignored = sum(1 for s in self.shifts if s.shift_type == ShiftType.NEGEREN)
@@ -269,6 +283,22 @@ class MainWindow(QMainWindow):
             "statusOk",
         )
         self._auto_check_duplicates()
+
+    # ------------------------------------------------------------------
+    def reset_file(self) -> None:
+        """Clear the loaded roster so the user can start over. Settings and
+        the chosen agenda are left untouched."""
+        self.shifts = []
+        self.preview.clear()
+        self.preview.setVisible(False)
+        while self.chips_row.count():
+            item = self.chips_row.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        self.progress_bar.setVisible(False)
+        self.sync_btn.setEnabled(False)
+        self.reset_btn.setEnabled(False)
+        self._set_status("Nog geen rooster geladen.", "statusDim")
 
     # ------------------------------------------------------------------
     def _auto_check_duplicates(self) -> None:

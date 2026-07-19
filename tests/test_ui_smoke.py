@@ -31,8 +31,19 @@ def test_main_window_loads_roster(app, tmp_path, monkeypatch):
     window.load_file(str(SAMPLE))
     assert len(window.shifts) == 5
     assert window.sync_btn.isEnabled()
+    assert window.reset_btn.isEnabled()
     assert window.preview.count() == 5
     assert "5 items geladen" in window.status.text()
+
+    # Reset clears the file but never the settings.
+    calendar_before = window.settings.calendar_name
+    window.reset_file()
+    assert window.shifts == []
+    assert window.preview.count() == 0
+    assert not window.sync_btn.isEnabled()
+    assert not window.reset_btn.isEnabled()
+    assert "Nog geen rooster" in window.status.text()
+    assert window.settings.calendar_name == calendar_before
 
 
 def test_branding_assets_present_and_loadable(app):
