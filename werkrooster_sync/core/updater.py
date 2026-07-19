@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import ssl
 import subprocess
 import sys
@@ -156,15 +157,16 @@ def download(update: UpdateInfo, progress=None) -> Path:
 
 
 def cleanup_old_binary() -> None:
-    """Remove the '<exe>.old' leftover from a previous Windows update."""
+    """Remove the '<exe>.old'/'.new' leftovers from a previous Windows update."""
     if not getattr(sys, "frozen", False):
         return
-    old = Path(sys.executable + ".old")
-    try:
-        if old.exists():
-            old.unlink()
-    except OSError:
-        pass
+    for suffix in (".old", ".new"):
+        leftover = Path(sys.executable + suffix)
+        try:
+            if leftover.exists():
+                leftover.unlink()
+        except OSError:
+            pass
 
 
 def install_and_restart(update: UpdateInfo, downloaded: Path) -> None:
@@ -222,22 +224,45 @@ def _install_macos(zip_path: Path) -> None:
     raise SystemExit(0)
 
 
-def _install_windows(exe_path: Path) -> None:
-    current = Path(sys.executable).resolve()
+def _swap_windows_exe(exe_path: Path, current: Path) -> None:
+    """Replace *current* with *exe_path*, robust across drives. Separated
+    from process relaunch so it can be tested."""
     old = Path(str(current) + ".old")
+    staged = Path(str(current) + ".new")
     try:
+        # 1) Copy the download next to the target first. This is the only
+        #    cross-drive step (the download sits in the system temp dir on
+        #    C:, while the app may run from a mapped/shared drive such as a
+        #    Parallels share, which os.replace refuses to move across).
+        if staged.exists():
+            staged.unlink()
+        shutil.copy2(str(exe_path), str(staged))
+        # 2) Swap with two same-drive renames (always allowed, even on
+        #    mapped drives, and cheap/atomic).
         if old.exists():
             old.unlink()
-        current.rename(old)
-        exe_path.replace(current)
+        current.rename(old)      # move the running exe aside
+        staged.rename(current)   # put the new exe in its place
     except OSError as exc:
-        # Roll back if possible.
+        # Roll back so the app is never left without its executable.
         try:
-            if old.exists() and not current.exists():
+            if not current.exists() and old.exists():
                 old.rename(current)
         except OSError:
             pass
-        raise UpdateError(f"Installeren mislukt: {exc}") from exc
+        try:
+            if staged.exists():
+                staged.unlink()
+        except OSError:
+            pass
+        raise UpdateError(
+            f"Installeren mislukt: {exc}. Download eventueel handmatig via "
+            f"{RELEASES_PAGE}"
+        ) from exc
 
+
+def _install_windows(exe_path: Path) -> None:
+    current = Path(sys.executable).resolve()
+    _swap_windows_exe(exe_path, current)
     subprocess.Popen([str(current)], close_fds=True)
     raise SystemExit(0)
