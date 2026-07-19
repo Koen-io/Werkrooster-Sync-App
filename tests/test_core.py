@@ -211,6 +211,34 @@ def test_bvcm_dienst_codes_keep_time_based_names():
 
 
 # ----------------------------------------------------------------------
+# Informatie/Notitie field in the title
+# ----------------------------------------------------------------------
+INFO = Path(__file__).parent / "sample_info.ics"
+
+
+def test_info_field_appended_to_title():
+    s = Settings()
+    shifts = apply_classification(parse_ics(INFO), s)
+    by_uid = {x.uid: x for x in shifts}
+    # From the HTML X-ALT-DESC ("Informatie: QRA")
+    assert by_uid["info-1@test"].info == "QRA"
+    assert by_uid["info-1@test"].display_name == "Ochtend - QRA"
+    # From a plain DESCRIPTION ("Notitie: Kustwacht")
+    assert by_uid["info-2@test"].info == "Kustwacht"
+    assert by_uid["info-2@test"].display_name == "Laat - Kustwacht"
+    # Empty Informatie: no suffix
+    assert by_uid["info-3@test"].info == ""
+    assert by_uid["info-3@test"].display_name == "Ochtend"
+
+
+def test_info_in_title_can_be_disabled():
+    s = Settings()
+    s.info_in_title = False
+    shifts = apply_classification(parse_ics(INFO), s)
+    assert all(" - " not in x.display_name for x in shifts)
+
+
+# ----------------------------------------------------------------------
 # BVCM/Outlook-style roster (all-day events, times in the title)
 # ----------------------------------------------------------------------
 BVCM = Path(__file__).parent / "sample_bvcm.ics"

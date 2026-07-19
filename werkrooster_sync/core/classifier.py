@@ -158,6 +158,15 @@ def apply_classification(shifts: list[Shift], settings: Settings) -> list[Shift]
             if settings.rules.get("mark_concept", True) and shift.is_concept:
                 shift.display_name += " (concept)"
 
+        # "Ochtend - QRA": the roster's Informatie/Notitie right in the title.
+        if (
+            settings.info_in_title
+            and shift.info
+            and shift.shift_type != ShiftType.NEGEREN
+            and shift.info.casefold() not in shift.display_name.casefold()
+        ):
+            shift.display_name += f" - {shift.info}"
+
         if shift.shift_type == ShiftType.NEGEREN:
             shift.reminder_minutes = None
         else:

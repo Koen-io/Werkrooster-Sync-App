@@ -1,6 +1,8 @@
 """Parse the roster .ics file into :class:`Shift` objects."""
 from __future__ import annotations
 
+import html
+import re
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
@@ -11,6 +13,31 @@ from .models import Shift
 
 class IcsParseError(Exception):
     """Raised when the .ics file cannot be read or contains no events."""
+
+
+#: "Informatie: QRA" / "Info: Kustwacht" / "Notitie: …" in the description.
+_INFO_RE = re.compile(
+    r"(?:informatie|notitie|info)\s*:\s*([^\r\n<]+)", re.IGNORECASE
+)
+
+
+def _extract_info(component) -> str:
+    """Pull the Informatie/Notitie value from DESCRIPTION or the HTML
+    X-ALT-DESC that BVCM/Outlook exports carry."""
+    sources = []
+    desc = component.get("DESCRIPTION")
+    if desc:
+        sources.append(str(desc))
+    alt = component.get("X-ALT-DESC")
+    if alt:
+        text = re.sub(r"<[^>]+>", "\n", str(alt))
+        sources.append(html.unescape(text))
+    for source in sources:
+        for match in _INFO_RE.finditer(source):
+            value = match.group(1).strip().strip("\\").strip()
+            if value:
+                return value
+    return ""
 
 
 def _as_datetime(value: date | datetime) -> tuple[datetime, bool]:
@@ -63,6 +90,7 @@ def parse_ics(path: str | Path) -> list[Shift]:
                 location=str(component.get("LOCATION", "")).strip(),
                 description=str(component.get("DESCRIPTION", "")).strip(),
                 uid=str(component.get("UID", "")).strip(),
+                info=_extract_info(component),
             )
         )
 
