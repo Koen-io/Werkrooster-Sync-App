@@ -39,14 +39,6 @@ def _make_splash(app):
     return splash
 
 
-def _position_half_screen(app, window) -> None:
-    """Half the screen wide, full available height, centered horizontally."""
-    screen = app.primaryScreen().availableGeometry()
-    width = screen.width() // 2
-    window.resize(width, screen.height())
-    window.move(screen.x() + (screen.width() - width) // 2, screen.y())
-
-
 def main() -> int:
     from PySide6.QtCore import Qt, QTimer
     from PySide6.QtWidgets import QApplication
@@ -82,9 +74,16 @@ def main() -> int:
     )
 
     def show_main() -> None:
-        # Front and centre at startup; after that the window behaves normally.
-        _position_half_screen(app, window)
-        window.show()
+        # Open maximized so the whole title bar is visible. A sensible restore
+        # size is set first, so un-maximizing gives a comfortable window.
+        screen = app.primaryScreen().availableGeometry()
+        rw, rh = int(screen.width() * 0.72), int(screen.height() * 0.85)
+        window.resize(rw, rh)
+        window.move(
+            screen.x() + (screen.width() - rw) // 2,
+            screen.y() + (screen.height() - rh) // 2,
+        )
+        window.showMaximized()
         window.raise_()
         window.activateWindow()
         if splash:
