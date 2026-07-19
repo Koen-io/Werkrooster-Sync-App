@@ -40,6 +40,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Stamp release version
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
+        shell: bash
+        run: |
+          TAG="${{ inputs.release_tag || github.ref_name }}"
+          echo "__version__ = \"${TAG#v}\"" > werkrooster_sync/version.py
       - name: Build .app
         run: |
           pip install -r requirements-dev.txt
@@ -60,6 +66,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Stamp release version
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
+        shell: bash
+        run: |
+          TAG="${{ inputs.release_tag || github.ref_name }}"
+          echo "__version__ = \"${TAG#v}\"" > werkrooster_sync/version.py
       - name: Build .exe
         run: |
           pip install -r requirements-dev.txt

@@ -28,8 +28,10 @@ def _app_icon():
 def _make_splash(app):
     """Build the animated splash screen, centered on the primary screen."""
     from .ui.splash import AnimatedSplash
+    from .version import __version__
 
-    splash = AnimatedSplash()
+    label = "dev" if "dev" in __version__ else f"v{__version__}"
+    splash = AnimatedSplash(version=label)
     screen = app.primaryScreen().availableGeometry()
     frame = splash.frameGeometry()
     frame.moveCenter(screen.center())
@@ -59,9 +61,11 @@ def main() -> int:
 
     # Activate the configured color palette before any window is built.
     from .core.settings import Settings
+    from .core.updater import cleanup_old_binary
     from .ui import theme
 
     theme.apply_palette(Settings.load().theme)
+    cleanup_old_binary()  # leftover from a previous Windows update
 
     splash = _make_splash(app)
     if splash:
@@ -92,6 +96,29 @@ def main() -> int:
         QTimer.singleShot(SPLASH_MILLISECONDS, show_main)
     else:
         show_main()
+
+    def check_updates() -> None:
+        from .core.updater import check_for_update, current_version, is_dev_build
+
+        if is_dev_build():
+            return
+        from .ui.settings_dialog import _Worker
+
+        worker = _Worker(check_for_update, window)
+
+        def on_found(update) -> None:
+            if update is not None:
+                from .ui.update_dialog import UpdateDialog
+
+                UpdateDialog(update, current_version(), window).exec()
+
+        worker.done.connect(on_found)
+        worker.failed.connect(lambda _msg: None)  # silent when offline
+        window._update_worker = worker
+        worker.start()
+
+    # Check shortly after startup so it never delays the window itself.
+    QTimer.singleShot(SPLASH_MILLISECONDS + 1500, check_updates)
 
     return app.exec()
 
