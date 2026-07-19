@@ -210,6 +210,96 @@ def test_bvcm_dienst_codes_keep_time_based_names():
     assert short_activity.display_name == "A6.02 Adviseren"
 
 
+def _rust_day(day: int, times: str, tag: str = "[C1]") -> Shift:
+    return make_shift(
+        datetime(2026, 8, day), datetime(2026, 8, day + 1),
+        f"{tag} 12345678 [Rust] {times}", all_day=True,
+    )
+
+
+def test_rust_only_days_become_vrij():
+    """A day with only [Rust] — full-day OR partial — and no shift is Vrij."""
+    s = Settings()
+    shifts = apply_classification(
+        [
+            _rust_day(2, "00:00 - 24:00"),          # rust hele dag
+            _rust_day(3, "07:00 - 00:00"),          # partial rust, geen dienst
+            _rust_day(4, "00:00 - 07:00"),          # partial rust, geen dienst
+        ],
+        s,
+    )
+    vrij = [x for x in shifts if x.shift_type == ShiftType.VRIJ]
+    assert [x.start.day for x in vrij] == [2, 3, 4]
+    assert all(x.all_day for x in vrij)
+    assert all(x.sync_id for x in vrij)
+    # Concept rust -> concept Vrij, so auto-replacement keeps working.
+    assert all(x.is_concept for x in vrij)
+    assert vrij[0].display_name == "Vrij (concept)"
+
+
+def test_rust_plus_vrij_gives_single_vrij():
+    """26-07 scenario: explicit Vrij + [Rust] on the same day -> one Vrij."""
+    s = Settings()
+    shifts = apply_classification(
+        [
+            make_shift(datetime(2026, 8, 2), datetime(2026, 8, 3),
+                       "[R] 12345678 [Vr.zondag] 00:00 - 24:00", all_day=True),
+            _rust_day(2, "00:00 - 24:00", tag="[R]"),
+        ],
+        s,
+    )
+    vrij = [x for x in shifts if x.shift_type == ShiftType.VRIJ]
+    assert len(vrij) == 1
+
+
+def test_rust_plus_shift_gives_no_extra_vrij():
+    s = Settings()
+    shifts = apply_classification(
+        [
+            make_shift(datetime(2026, 8, 2), datetime(2026, 8, 3),
+                       "[R] 12345678 DIENST 07:00 - 16:00", all_day=True),
+            _rust_day(2, "00:00 - 07:00", tag="[R]"),
+        ],
+        s,
+    )
+    assert not [x for x in shifts if x.shift_type == ShiftType.VRIJ]
+
+
+def test_rust_vrij_synthesis_can_be_disabled():
+    s = Settings()
+    s.rules["empty_day_is_vrij"] = False
+    shifts = apply_classification([_rust_day(2, "00:00 - 24:00")], s)
+    assert not [x for x in shifts if x.shift_type == ShiftType.VRIJ]
+
+
+def test_double_vrij_registration_gives_single_vrij():
+    """VERLOF + [Vakantie] on the same day (2-9 scenario) -> one Vrij."""
+    s = Settings()
+    shifts = apply_classification(
+        [
+            make_shift(datetime(2026, 9, 2), datetime(2026, 9, 3),
+                       "[C2] 12345678 VERLOF 10:00 - 17:36", all_day=True),
+            make_shift(datetime(2026, 9, 2), datetime(2026, 9, 3),
+                       "[C2] 12345678 [Vakantie] 00:00 - 24:00", all_day=True),
+        ],
+        s,
+    )
+    vrij = [x for x in shifts if x.shift_type == ShiftType.VRIJ]
+    assert len(vrij) == 1
+    assert vrij[0].all_day
+
+
+def test_birthday_only_day_is_not_vrij():
+    """Negeren items that are not [Rust] never make a day Vrij."""
+    s = Settings()
+    shifts = apply_classification(
+        [make_shift(datetime(2026, 8, 2), datetime(2026, 8, 3),
+                    "Verjaardag van Piet", all_day=True)],
+        s,
+    )
+    assert not [x for x in shifts if x.shift_type == ShiftType.VRIJ]
+
+
 # ----------------------------------------------------------------------
 # Informatie/Notitie field in the title
 # ----------------------------------------------------------------------
@@ -393,7 +483,9 @@ def test_sync_never_adds_same_shift_twice_in_one_run():
     backend = FakeBackend()
     report = sync_shifts(doubled, backend, s)
     assert len(report.added) == 5
-    assert len(report.skipped_existing) == 5
+    # The duplicated Vrij day is already collapsed during classification;
+    # the four remaining work-item copies are caught by the sync-ID check.
+    assert len(report.skipped_existing) == 4
 
 
 def test_sync_skips_renamed_item_via_sync_id():

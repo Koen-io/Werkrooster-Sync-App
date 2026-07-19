@@ -70,10 +70,12 @@ def test_concept_pdf_flags_everything_as_concept():
     dienst = by_date(shifts, 2026, 7, 20)[0]
     assert dienst.display_name == "Ochtend (concept)"
 
-    # Full-day [Rust] on an otherwise empty day counts as Vrij
-    vrij = by_date(shifts, 2026, 7, 18)
+    # Full-day [Rust] on an otherwise empty day counts as Vrij; the rust row
+    # itself stays visible as (grey) noise.
+    day = by_date(shifts, 2026, 7, 18)
+    vrij = [x for x in day if x.shift_type == ShiftType.VRIJ]
     assert len(vrij) == 1
-    assert vrij[0].shift_type == ShiftType.VRIJ
+    assert vrij[0].display_name == "Vrij (concept)"
 
 
 def test_empty_day_option_can_be_disabled():

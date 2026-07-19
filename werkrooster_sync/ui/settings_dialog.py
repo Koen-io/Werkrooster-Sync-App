@@ -267,7 +267,7 @@ class SettingsPanel(QWidget):
         outer.addLayout(form)
 
         self.empty_day_check = ToggleSwitch(
-            "Lege dagen (of hele dag [Rust]) in een PDF-rooster als Vrij aanmerken"
+            "Lege dagen en dagen met alleen [Rust] als Vrij aanmerken"
         )
         self.empty_day_check.setChecked(
             bool(self.settings.rules.get("empty_day_is_vrij", True))

@@ -142,7 +142,7 @@ class ToggleSwitch(QCheckBox):
         on = self.isChecked()
         y = (self.height() - self.TRACK_H) / 2
 
-        track = QColor(theme.OK) if on else QColor(theme.SWITCH_OFF)
+        track = QColor(theme.ACCENT) if on else QColor(theme.SWITCH_OFF)
         if not self.isEnabled():
             track.setAlphaF(0.45)
         p.setPen(Qt.PenStyle.NoPen)
