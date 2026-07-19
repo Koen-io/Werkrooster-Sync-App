@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 
 from PySide6.QtCore import QDate, Qt, QThread, Signal
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QDateEdit,
     QFormLayout,
@@ -30,6 +29,7 @@ from ..core.models import ShiftType
 from ..core.settings import Settings
 from ..core.sync import find_duplicates
 from . import theme
+from .widgets import ToggleSwitch
 
 REMINDER_PRESETS: list[tuple[str, int]] = [
     ("Op het tijdstip zelf", 0),
@@ -50,7 +50,7 @@ TYPE_LABELS = {
     ShiftType.NACHT: "Nachtdienst",
     ShiftType.DIENST: "Overige dienst",
     ShiftType.AFSPRAAK: "Afspraak",
-    ShiftType.NEGEREN: "Negeren (niet synchroniseren)",
+    ShiftType.NEGEREN: "Negeren",
 }
 
 DISPLAY_OPTIONS: list[tuple[str, str]] = [
@@ -152,7 +152,7 @@ class SettingsPanel(QWidget):
 
         self.name_edits: dict[str, QLineEdit] = {}
         self.display_combos: dict[str, QComboBox] = {}
-        self.reminder_checks: dict[str, QCheckBox] = {}
+        self.reminder_checks: dict[str, ToggleSwitch] = {}
         self.reminder_combos: dict[str, QComboBox] = {}
 
         naming_types = [t for t in ShiftType.ordered() if t != ShiftType.NEGEREN]
@@ -182,7 +182,7 @@ class SettingsPanel(QWidget):
             )
             display_combo.setCurrentIndex(didx if didx >= 0 else 0)
 
-            check = QCheckBox()
+            check = ToggleSwitch()
             cfg = self.settings.reminders.get(key, {})
             check.setChecked(bool(cfg.get("enabled")))
 
@@ -208,11 +208,18 @@ class SettingsPanel(QWidget):
 
         outer.addLayout(grid)
 
-        self.include_vrij_check = QCheckBox("Vrije dagen ook in de agenda zetten")
+        self.info_title_check = ToggleSwitch(
+            "Infoveld-tekst in titel van agenda-item plaatsen "
+            "(bijv. “Ochtend - QRA”)"
+        )
+        self.info_title_check.setChecked(self.settings.info_in_title)
+        outer.addWidget(self.info_title_check)
+
+        self.include_vrij_check = ToggleSwitch("Vrije dagen ook in de agenda zetten")
         self.include_vrij_check.setChecked(self.settings.include_vrij)
         outer.addWidget(self.include_vrij_check)
 
-        self.include_afspraken_check = QCheckBox(
+        self.include_afspraken_check = ToggleSwitch(
             "Afspraken die geen dienst zijn ook synchroniseren"
         )
         self.include_afspraken_check.setChecked(self.settings.include_afspraken)
@@ -240,6 +247,12 @@ class SettingsPanel(QWidget):
 
         form = QFormLayout()
         form.setSpacing(10)
+        # Labels pinned to the far left at a fixed width; the keyword fields
+        # take all remaining width so the word lists are readable at a glance.
+        form.setLabelAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.keyword_edits: dict[str, QLineEdit] = {}
         keywords = self.settings.rules.get("keywords", {})
         for shift_type in ShiftType.ordered():
@@ -248,11 +261,12 @@ class SettingsPanel(QWidget):
             color = theme.SHIFT_COLORS[shift_type]
             lbl = QLabel(f"●  {TYPE_LABELS[shift_type]}")
             lbl.setStyleSheet(f"color: {color}; font-weight: 600;")
+            lbl.setFixedWidth(230)
             form.addRow(lbl, edit)
             self.keyword_edits[key] = edit
         outer.addLayout(form)
 
-        self.empty_day_check = QCheckBox(
+        self.empty_day_check = ToggleSwitch(
             "Lege dagen (of hele dag [Rust]) in een PDF-rooster als Vrij aanmerken"
         )
         self.empty_day_check.setChecked(
@@ -260,7 +274,7 @@ class SettingsPanel(QWidget):
         )
         outer.addWidget(self.empty_day_check)
 
-        self.parse_times_check = QCheckBox(
+        self.parse_times_check = ToggleSwitch(
             "Tijden uit de titel halen (bijv. “DIENST 07:00 - 16:00” op een "
             "hele-dag-item wordt een dienst van 07:00 tot 16:00)"
         )
@@ -269,7 +283,7 @@ class SettingsPanel(QWidget):
         )
         outer.addWidget(self.parse_times_check)
 
-        self.mark_concept_check = QCheckBox(
+        self.mark_concept_check = ToggleSwitch(
             "Conceptdiensten ([C1]/[C2] in het rooster) markeren met “(concept)”"
         )
         self.mark_concept_check.setChecked(
@@ -277,9 +291,8 @@ class SettingsPanel(QWidget):
         )
         outer.addWidget(self.mark_concept_check)
 
-        self.replace_concept_check = QCheckBox(
-            "Conceptdiensten automatisch vervangen zodra het definitieve (of een "
-            "nieuwer concept-) rooster wordt geïmporteerd"
+        self.replace_concept_check = ToggleSwitch(
+            "Conceptdiensten automatisch vervangen bij import van nieuwer rooster"
         )
         self.replace_concept_check.setChecked(self.settings.replace_concept)
         outer.addWidget(self.replace_concept_check)
@@ -619,6 +632,7 @@ class SettingsPanel(QWidget):
             }
         for key, combo in self.display_combos.items():
             s.display[key] = combo.currentData()
+        s.info_in_title = self.info_title_check.isChecked()
         s.include_vrij = self.include_vrij_check.isChecked()
         s.include_afspraken = self.include_afspraken_check.isChecked()
         s.rules["min_shift_hours"] = self.min_shift_spin.value()

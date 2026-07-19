@@ -96,6 +96,9 @@ class Shift:
     location: str = ""
     description: str = ""
     uid: str = ""
+    #: Free-text note from the roster's Informatie/Notitie field (e.g. "QRA",
+    #: "Kustwacht"); can be appended to the calendar title via settings.
+    info: str = ""
     reminder_minutes: Optional[int] = None  # None = no reminder
     sync_id: str = ""
     already_imported: bool = False  # set by the automatic duplicate check

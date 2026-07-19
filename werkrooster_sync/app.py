@@ -57,6 +57,12 @@ def main() -> int:
     app.setOrganizationName("WerkroosterSync")
     app.setWindowIcon(_app_icon())
 
+    # Activate the configured color palette before any window is built.
+    from .core.settings import Settings
+    from .ui import theme
+
+    theme.apply_palette(Settings.load().theme)
+
     splash = _make_splash(app)
     if splash:
         splash.show()

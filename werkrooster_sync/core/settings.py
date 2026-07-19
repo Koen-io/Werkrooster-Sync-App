@@ -177,11 +177,14 @@ class Settings:
     #: During sync: automatically delete an outdated concept item when a new
     #: (definitive or updated concept) shift arrives for the same day.
     replace_concept: bool = True
+    #: Append the roster's Informatie/Notitie text to the calendar title,
+    #: e.g. "Ochtend - QRA".
+    info_in_title: bool = True
     display: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_DISPLAY))
     rules: dict[str, Any] = field(
         default_factory=lambda: json.loads(json.dumps(DEFAULT_RULES))
     )
-    theme: str = "dark"
+    theme: str = "glas-donker"
 
     # ------------------------------------------------------------------
     def name_for(self, shift_type: ShiftType) -> str:
@@ -206,6 +209,7 @@ class Settings:
             "include_vrij": self.include_vrij,
             "include_afspraken": self.include_afspraken,
             "replace_concept": self.replace_concept,
+            "info_in_title": self.info_in_title,
             "display": self.display,
             "rules": self.rules,
             "theme": self.theme,
