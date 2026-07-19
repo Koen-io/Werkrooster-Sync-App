@@ -38,7 +38,6 @@ DAY_NAMES = (
 
 _DATE_RE = re.compile(r"(\d{2})/(\d{2})/(\d{4})")
 _TIME_RANGE_RE = re.compile(r"\d{1,2}[:.]\d{2}\s*[-–—]\s*\d{1,2}[:.]\d{2}")
-_FULL_DAY_RUST_RE = re.compile(r"^\[rust\]\s*0?0[:.]00\s*[-–—]\s*24[:.]00$", re.IGNORECASE)
 
 #: Lines that belong to the report chrome, not to the roster itself.
 _SKIP_MARKERS = (
@@ -186,10 +185,10 @@ def parse_pdf(path: str | Path, settings: Settings | None = None) -> list[Shift]
         start = datetime(year, month, day)
         day_entries = days[date_iso]
 
-        real = [e for e in day_entries if not _FULL_DAY_RUST_RE.match(e)]
-        if empty_day_is_vrij and not real:
-            # Empty day (definitive) or only a full-day [Rust] (concept):
-            # this is a free day, like the ICS export lists explicitly.
+        if empty_day_is_vrij and not day_entries:
+            # An empty day in the definitive roster is a free day, like the
+            # ICS export lists explicitly. Days holding only [Rust] blocks
+            # are handled generically after classification.
             day_entries = ["Vrij"]
 
         for entry in day_entries:

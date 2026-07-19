@@ -38,6 +38,16 @@ from datetime import datetime, time, timedelta
 from .models import Shift, ShiftType, make_sync_id
 from .settings import Settings
 
+#: Everything that can end up in the calendar (i.e. not roster noise).
+_SYNCABLE = {
+    ShiftType.VRIJ,
+    ShiftType.OCHTEND,
+    ShiftType.LAAT,
+    ShiftType.NACHT,
+    ShiftType.DIENST,
+    ShiftType.AFSPRAAK,
+}
+
 #: "07:00 - 16:00", "7.30-16.00", "23:00 – 07:30" …
 _TIME_RANGE_RE = re.compile(
     r"(\d{1,2})[:.](\d{2})\s*[-–—]\s*(\d{1,2})[:.](\d{2})"
@@ -185,4 +195,65 @@ def apply_classification(shifts: list[Shift], settings: Settings) -> list[Shift]
         shift.sync_id = make_sync_id(
             shift.uid, shift.original_summary, shift.start, shift.end
         )
+
+    _dedupe_vrij_per_day(shifts)
+    if settings.rules.get("empty_day_is_vrij", True):
+        _synthesize_vrij_for_rust_days(shifts, settings)
+    shifts.sort(key=lambda s: s.start)
     return shifts
+
+
+def _dedupe_vrij_per_day(shifts: list[Shift]) -> None:
+    """One Vrij per day, always. Rosters can register a free day twice (e.g.
+    VERLOF and [Vakantie] on the same date): keep a single Vrij item,
+    preferring the whole-day one."""
+    seen: set = set()
+    keep: list[Shift] = []
+    for s in sorted(shifts, key=lambda x: (x.start.date(), not x.all_day, x.start)):
+        if s.shift_type == ShiftType.VRIJ:
+            day = s.start.date()
+            if day in seen:
+                continue
+            seen.add(day)
+        keep.append(s)
+    shifts[:] = keep
+
+
+def _synthesize_vrij_for_rust_days(shifts: list[Shift], settings: Settings) -> None:
+    """A day that only holds [Rust] blocks — whether 00:00-24:00 or partial
+    like 07:00-00:00 — and no shift, leave or appointment is a free day: add
+    one Vrij item for it. Days that already carry a Vrij (or any other
+    syncable item) are left alone, so no doubles can occur."""
+    by_date: dict = {}
+    for s in shifts:
+        by_date.setdefault(s.start.date(), []).append(s)
+
+    for day, items in sorted(by_date.items()):
+        if any(x.shift_type in _SYNCABLE for x in items):
+            continue
+        rust = [
+            x
+            for x in items
+            if x.shift_type == ShiftType.NEGEREN
+            and "[rust]" in x.original_summary.casefold()
+        ]
+        if not rust:
+            continue
+        start = datetime.combine(day, time.min)
+        end = start + timedelta(days=1)
+        vrij = Shift(
+            start=start,
+            end=end,
+            original_summary="Vrij",
+            all_day=True,
+        )
+        vrij.shift_type = ShiftType.VRIJ
+        vrij.is_concept = any(x.is_concept for x in rust)
+        vrij.display_name = settings.name_for(ShiftType.VRIJ)
+        if settings.rules.get("mark_concept", True) and vrij.is_concept:
+            vrij.display_name += " (concept)"
+        vrij.reminder_minutes = settings.reminder_for(ShiftType.VRIJ)
+        # Same deterministic ID basis as an explicit Vrij day ("vrij" + date),
+        # so re-imports and PDF/ICS cross-imports dedupe cleanly.
+        vrij.sync_id = make_sync_id("", "vrij", start, end)
+        shifts.append(vrij)
