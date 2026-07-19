@@ -57,6 +57,9 @@ def test_branding_assets_present_and_loadable(app):
     icon = _app_icon()
     assert not icon.isNull()
 
+    # The handout ships inside the app so it travels with every download.
+    assert asset_path("handleiding.pdf").exists()
+
     # The animated splash renders at any point in its timeline without errors.
     splash = _make_splash(app)
     assert splash is not None

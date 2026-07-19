@@ -1,5 +1,8 @@
 # Wijzigingen
 
+## v1.4.2
+- De handleiding (PDF) zit nu in de app: klik op “Handleiding” in de titelbalk om hem te openen. Hij wordt ook meegeleverd bij elke download.
+
 ## v1.4.1
 - Feedback & Vragen-formulier verstuurt nu correct (verbindingsfout opgelost).
 - Het updatevenster toont voortaan wat er nieuw is in de nieuwe versie in plaats van installatie-instructies.
