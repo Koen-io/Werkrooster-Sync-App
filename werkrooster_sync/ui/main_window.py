@@ -93,11 +93,23 @@ class MainWindow(QMainWindow):
         header.addLayout(title_box)
         header.addStretch()
 
+        feedback_btn = QPushButton("✉  Feedback && Vragen")
+        feedback_btn.setObjectName("secondary")
+        feedback_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        feedback_btn.clicked.connect(self.open_feedback)
+
+        self.header_update_btn = QPushButton("↻  Zoek naar updates")
+        self.header_update_btn.setObjectName("secondary")
+        self.header_update_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.header_update_btn.clicked.connect(self.check_for_updates)
+
         settings_btn = QPushButton("⚙  Instellingen")
         settings_btn.setObjectName("secondary")
         settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         settings_btn.clicked.connect(self.open_settings)
-        header.addWidget(settings_btn, alignment=Qt.AlignmentFlag.AlignTop)
+
+        for btn in (feedback_btn, self.header_update_btn, settings_btn):
+            header.addWidget(btn, alignment=Qt.AlignmentFlag.AlignTop)
         root.addLayout(header)
 
         # Stap 1: agenda kiezen --------------------------------------
@@ -420,6 +432,61 @@ class MainWindow(QMainWindow):
 
         panel.saved.connect(on_saved)
         panel.cancelled.connect(close_panel)
+
+    # ------------------------------------------------------------------
+    def open_feedback(self) -> None:
+        from .feedback_dialog import FeedbackDialog
+
+        FeedbackDialog(self).exec()
+
+    # ------------------------------------------------------------------
+    def check_for_updates(self) -> None:
+        """Manual update check from the title bar (same actions as in
+        Instellingen → Onderhoud): show the update dialog or the
+        up-to-date confirmation."""
+        from ..core.updater import (
+            check_for_update,
+            current_version,
+            is_dev_build,
+        )
+
+        self.header_update_btn.setEnabled(False)
+
+        def restore():
+            self.header_update_btn.setEnabled(True)
+
+        if is_dev_build():
+            from .update_dialog import UpToDateDialog
+
+            UpToDateDialog(current_version(), self).exec()
+            restore()
+            return
+
+        self._set_status("Controleren op updates…", "statusDim")
+        self._upd_worker = _Worker(check_for_update, self)
+
+        def on_done(update):
+            restore()
+            if update is None:
+                self._set_status("Je hebt de nieuwste versie.", "statusOk")
+                from .update_dialog import UpToDateDialog
+
+                UpToDateDialog(current_version(), self).exec()
+            else:
+                self._set_status(
+                    f"Versie v{update.version} beschikbaar!", "statusOk"
+                )
+                from .update_dialog import UpdateDialog
+
+                UpdateDialog(update, current_version(), self).exec()
+
+        def on_fail(msg):
+            restore()
+            self._set_status(msg, "statusError")
+
+        self._upd_worker.done.connect(on_done)
+        self._upd_worker.failed.connect(on_fail)
+        self._upd_worker.start()
 
     # ------------------------------------------------------------------
     def start_sync(self) -> None:
