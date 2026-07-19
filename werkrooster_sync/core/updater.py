@@ -35,6 +35,10 @@ RELEASES_API = (
 RELEASES_PAGE = "https://github.com/Koen-io/Werkrooster-Sync-App/releases/latest"
 _TIMEOUT = 15
 
+#: A real User-Agent is required: GitHub's API rejects requests without one,
+#: and Cloudflare (in front of Web3Forms) blocks Python's default UA with 403.
+USER_AGENT = f"WerkroosterSync/{__version__} (+https://github.com/Koen-io/Werkrooster-Sync-App)"
+
 
 class UpdateError(Exception):
     """Raised when checking/downloading/installing an update fails."""
@@ -111,7 +115,11 @@ def check_for_update(platform: str | None = None) -> UpdateInfo | None:
     """Return info about a newer release, or None when up to date."""
     try:
         req = urllib.request.Request(
-            RELEASES_API, headers={"Accept": "application/vnd.github+json"}
+            RELEASES_API,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "User-Agent": USER_AGENT,
+            },
         )
         with urllib.request.urlopen(req, timeout=_TIMEOUT, context=_ssl_context()) as resp:
             data = json.loads(resp.read().decode("utf-8"))
@@ -137,7 +145,9 @@ def download(update: UpdateInfo, progress=None) -> Path:
     """Download the asset to a temp file; ``progress(done, total)`` optional."""
     dest = Path(tempfile.mkdtemp(prefix="werkroostersync-update-")) / update.asset_name
     try:
-        req = urllib.request.Request(update.asset_url)
+        req = urllib.request.Request(
+            update.asset_url, headers={"User-Agent": USER_AGENT}
+        )
         with urllib.request.urlopen(
             req, timeout=60, context=_ssl_context()
         ) as resp, open(dest, "wb") as out:
