@@ -39,6 +39,34 @@ def test_pick_asset_per_platform():
     assert pick_asset(ASSETS, "linux") is None
 
 
+def test_ssl_context_uses_certifi_bundle():
+    import certifi
+
+    from werkrooster_sync.core.updater import _ssl_context
+
+    ctx = _ssl_context()
+    # A CA store must actually be loaded (this is what fails in a frozen
+    # app without certifi: no local issuer certificates).
+    assert ctx.cert_store_stats()["x509_ca"] > 0
+    assert certifi.where()
+
+
+def test_up_to_date_dialog_smoke():
+    pytest.importorskip("PySide6")
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication([])
+    from werkrooster_sync.ui.update_dialog import UpToDateDialog
+
+    dialog = UpToDateDialog("1.3.1")
+    assert dialog.windowTitle() == "Up-to-date"
+    from PySide6.QtWidgets import QLabel
+
+    texts = " ".join(l.text() for l in dialog.findChildren(QLabel))
+    assert "v1.3.1" in texts
+    dialog.close()
+
+
 def test_update_dialog_smoke():
     pytest.importorskip("PySide6")
     from PySide6.QtWidgets import QApplication

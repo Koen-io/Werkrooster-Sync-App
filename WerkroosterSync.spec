@@ -12,7 +12,7 @@ import sys
 IS_MAC = sys.platform == "darwin"
 IS_WIN = sys.platform == "win32"
 
-hiddenimports = ["pypdf"]
+hiddenimports = ["pypdf", "certifi"]
 if IS_WIN:
     hiddenimports += ["win32com", "win32com.client", "pythoncom", "win32timezone"]
 

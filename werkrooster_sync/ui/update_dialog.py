@@ -37,6 +37,67 @@ class _DownloadWorker(QThread):
             self.failed.emit(str(exc))
 
 
+class UpToDateDialog(QDialog):
+    """Styled confirmation shown by the manual check when no update exists."""
+
+    def __init__(self, current_version: str, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Up-to-date")
+        self.setModal(True)
+        self.setFixedWidth(420)
+        self.setStyleSheet(
+            theme.QSS
+            + f"""
+            QDialog {{
+                background: {theme.WINDOW_BG};
+                border: 1px solid {theme.BORDER};
+            }}
+            """
+        )
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(28, 26, 28, 22)
+        layout.setSpacing(12)
+
+        header = QHBoxLayout()
+        header.setSpacing(14)
+        logo = QLabel()
+        logo_file = asset_path("logo.png")
+        if logo_file.exists():
+            logo.setPixmap(
+                QPixmap(str(logo_file)).scaled(
+                    52, 52,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+            )
+        title_box = QVBoxLayout()
+        title_box.setSpacing(2)
+        title = QLabel("Je bent up-to-date  ✓")
+        title.setStyleSheet(
+            f"font-size: 19px; font-weight: 700; color: {theme.TEXT};"
+        )
+        sub = QLabel(f"Werkrooster Sync v{current_version} is de nieuwste versie.")
+        sub.setStyleSheet(f"font-size: 14px; color: {theme.TEXT_DIM};")
+        title_box.addWidget(title)
+        title_box.addWidget(sub)
+        header.addWidget(logo)
+        header.addLayout(title_box)
+        header.addStretch()
+        layout.addLayout(header)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        ok = QPushButton("Oké")
+        ok.setObjectName("primary")
+        ok.setStyleSheet(
+            "QPushButton#primary { padding: 10px 26px; font-size: 14px; }"
+        )
+        ok.clicked.connect(self.accept)
+        buttons.addWidget(ok)
+        layout.addLayout(buttons)
+
+
 class UpdateDialog(QDialog):
     """Prompt → gradient progress bar → install & relaunch."""
 
