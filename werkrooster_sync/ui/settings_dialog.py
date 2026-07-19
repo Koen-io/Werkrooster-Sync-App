@@ -428,8 +428,62 @@ class SettingsPanel(QWidget):
         old_layout.addWidget(self.old_result)
 
         outer.addWidget(old_box)
+
+        # ------------------------------------------------------ updates
+        upd_title = QLabel("Updates")
+        upd_title.setObjectName("sectionTitle")
+        outer.addSpacing(6)
+        outer.addWidget(upd_title)
+
+        upd_row = QHBoxLayout()
+        self.update_btn = QPushButton("Zoek naar updates")
+        self.update_btn.clicked.connect(self._check_updates)
+        upd_row.addWidget(self.update_btn)
+        from ..core.updater import current_version
+
+        self.update_result = QLabel(f"Huidige versie: v{current_version()}")
+        self.update_result.setObjectName("statusDim")
+        self.update_result.setWordWrap(True)
+        upd_row.addWidget(self.update_result, stretch=1)
+        outer.addLayout(upd_row)
+
         outer.addStretch()
         return w
+
+    def _check_updates(self):
+        from ..core.updater import UpdateError, check_for_update, current_version
+
+        self.update_btn.setEnabled(False)
+        self.update_result.setObjectName("statusDim")
+        self.update_result.setText("Controleren…")
+        self.update_result.style().polish(self.update_result)
+
+        self._worker = _Worker(check_for_update, self)
+
+        def on_done(update):
+            self.update_btn.setEnabled(True)
+            if update is None:
+                self.update_result.setObjectName("statusOk")
+                self.update_result.setText(
+                    f"Je hebt de nieuwste versie (v{current_version()}). ✓"
+                )
+            else:
+                self.update_result.setObjectName("statusOk")
+                self.update_result.setText(f"Versie v{update.version} beschikbaar!")
+                from .update_dialog import UpdateDialog
+
+                UpdateDialog(update, current_version(), self).exec()
+            self.update_result.style().polish(self.update_result)
+
+        def on_fail(msg):
+            self.update_btn.setEnabled(True)
+            self.update_result.setObjectName("statusError")
+            self.update_result.setText(msg)
+            self.update_result.style().polish(self.update_result)
+
+        self._worker.done.connect(on_done)
+        self._worker.failed.connect(on_fail)
+        self._worker.start()
 
     def _guard_can_inspect(self, result_label: QLabel) -> bool:
         """Show the export-mode warning if the backend can't see the calendar."""
