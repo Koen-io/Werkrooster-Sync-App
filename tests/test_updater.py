@@ -32,6 +32,29 @@ def test_version_comparison():
     assert is_newer("1.3.0", "0.0.0-dev") is True
 
 
+def test_windows_exe_swap_across_directories(tmp_path):
+    """Reproduces WinError 17: the download and the installed app live in
+    different locations (drives). The swap must still succeed and leave a
+    .old backup, never delete the running exe on failure."""
+    from werkrooster_sync.core.updater import _swap_windows_exe
+
+    app_dir = tmp_path / "app"
+    download_dir = tmp_path / "download"
+    app_dir.mkdir()
+    download_dir.mkdir()
+
+    current = app_dir / "WerkroosterSync.exe"
+    current.write_bytes(b"OLD-VERSION")
+    new_exe = download_dir / "WerkroosterSync.exe"
+    new_exe.write_bytes(b"NEW-VERSION")
+
+    _swap_windows_exe(new_exe, current)
+
+    assert current.read_bytes() == b"NEW-VERSION"
+    assert (app_dir / "WerkroosterSync.exe.old").read_bytes() == b"OLD-VERSION"
+    assert not (app_dir / "WerkroosterSync.exe.new").exists()
+
+
 def test_pick_asset_per_platform():
     assert pick_asset(ASSETS, "darwin")["name"] == "WerkroosterSync-macOS.zip"
     assert pick_asset(ASSETS, "win32")["name"] == "WerkroosterSync.exe"
