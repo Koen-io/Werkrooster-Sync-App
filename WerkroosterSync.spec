@@ -9,12 +9,20 @@ Build from the repository root:
 """
 import sys
 
+from PyInstaller.utils.hooks import collect_all
+
 IS_MAC = sys.platform == "darwin"
 IS_WIN = sys.platform == "win32"
 
 hiddenimports = ["pypdf", "certifi"]
 if IS_WIN:
     hiddenimports += ["win32com", "win32com.client", "pythoncom", "win32timezone"]
+
+# curl_cffi ships a compiled libcurl-impersonate + cert bundle that must be
+# collected so the packaged app can present a real Chrome TLS fingerprint
+# (needed to pass Cloudflare in front of Web3Forms).
+_cffi_datas, _cffi_binaries, _cffi_hidden = collect_all("curl_cffi")
+hiddenimports += _cffi_hidden
 
 excludes = [
     "tkinter",
@@ -32,8 +40,8 @@ excludes = [
 a = Analysis(
     ["run_app.py"],
     pathex=["."],
-    binaries=[],
-    datas=[("assets", "assets")],
+    binaries=_cffi_binaries,
+    datas=[("assets", "assets")] + _cffi_datas,
     hiddenimports=hiddenimports,
     excludes=excludes,
     noarchive=False,
