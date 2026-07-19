@@ -16,3 +16,20 @@ def assets_dir() -> Path:
 
 def asset_path(name: str) -> Path:
     return assets_dir() / name
+
+
+def open_path(path) -> None:
+    """Open a file with the operating system's default application."""
+    import os
+    import subprocess
+
+    p = str(path)
+    try:
+        if sys.platform == "darwin":
+            subprocess.Popen(["open", p])
+        elif os.name == "nt":
+            os.startfile(p)  # type: ignore[attr-defined]
+        else:
+            subprocess.Popen(["xdg-open", p])
+    except OSError:
+        pass

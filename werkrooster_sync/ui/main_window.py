@@ -93,6 +93,11 @@ class MainWindow(QMainWindow):
         header.addLayout(title_box)
         header.addStretch()
 
+        handleiding_btn = QPushButton("📖  Handleiding")
+        handleiding_btn.setObjectName("secondary")
+        handleiding_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        handleiding_btn.clicked.connect(self.open_handleiding)
+
         feedback_btn = QPushButton("✉  Feedback && Vragen")
         feedback_btn.setObjectName("secondary")
         feedback_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -108,7 +113,7 @@ class MainWindow(QMainWindow):
         settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         settings_btn.clicked.connect(self.open_settings)
 
-        for btn in (feedback_btn, self.header_update_btn, settings_btn):
+        for btn in (handleiding_btn, feedback_btn, self.header_update_btn, settings_btn):
             header.addWidget(btn, alignment=Qt.AlignmentFlag.AlignTop)
         root.addLayout(header)
 
@@ -432,6 +437,20 @@ class MainWindow(QMainWindow):
 
         panel.saved.connect(on_saved)
         panel.cancelled.connect(close_panel)
+
+    # ------------------------------------------------------------------
+    def open_handleiding(self) -> None:
+        """Open the bundled handout PDF in the system's default viewer."""
+        from ..resources import asset_path, open_path
+
+        pdf = asset_path("handleiding.pdf")
+        if pdf.exists():
+            open_path(pdf)
+            self._set_status("Handleiding geopend.", "statusOk")
+        else:
+            self._set_status(
+                "Handleiding niet gevonden in deze installatie.", "statusError"
+            )
 
     # ------------------------------------------------------------------
     def open_feedback(self) -> None:
