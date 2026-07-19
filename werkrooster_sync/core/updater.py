@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import re
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -36,6 +37,27 @@ _TIMEOUT = 15
 
 class UpdateError(Exception):
     """Raised when checking/downloading/installing an update fails."""
+
+
+def _ssl_context() -> ssl.SSLContext:
+    """SSL context with a CA bundle that also works inside the packaged app.
+
+    The frozen Python has no access to the OS certificate store, so HTTPS
+    verification fails without certifi's bundled CA file.
+    """
+    try:
+        import certifi
+
+        ctx = ssl.create_default_context(cafile=certifi.where())
+    except ImportError:  # pragma: no cover - certifi is a hard dependency
+        ctx = ssl.create_default_context()
+    # Also trust the OS certificate store, so corporate TLS-inspection
+    # proxies (whose root CA is installed on the machine) keep working.
+    try:
+        ctx.load_default_certs()
+    except Exception:  # pragma: no cover
+        pass
+    return ctx
 
 
 @dataclass
@@ -90,7 +112,7 @@ def check_for_update(platform: str | None = None) -> UpdateInfo | None:
         req = urllib.request.Request(
             RELEASES_API, headers={"Accept": "application/vnd.github+json"}
         )
-        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+        with urllib.request.urlopen(req, timeout=_TIMEOUT, context=_ssl_context()) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as exc:
         raise UpdateError(f"Kan niet controleren op updates: {exc}") from exc
@@ -115,7 +137,9 @@ def download(update: UpdateInfo, progress=None) -> Path:
     dest = Path(tempfile.mkdtemp(prefix="werkroostersync-update-")) / update.asset_name
     try:
         req = urllib.request.Request(update.asset_url)
-        with urllib.request.urlopen(req, timeout=60) as resp, open(dest, "wb") as out:
+        with urllib.request.urlopen(
+            req, timeout=60, context=_ssl_context()
+        ) as resp, open(dest, "wb") as out:
             total = int(resp.headers.get("Content-Length") or update.asset_size or 0)
             done = 0
             while True:
@@ -188,6 +212,12 @@ def _install_macos(zip_path: Path) -> None:
             f"Installeren mislukt (geen schrijfrechten?): {exc.stderr.decode(errors='ignore')}"
         ) from exc
 
+    # In-app downloads carry no quarantine flag, so Gatekeeper will not show
+    # the "open anyway" dance again — strip it anyway in case anything set it.
+    subprocess.run(
+        ["xattr", "-dr", "com.apple.quarantine", str(app_bundle)],
+        capture_output=True,
+    )
     subprocess.Popen(["open", "-n", str(app_bundle)])
     raise SystemExit(0)
 

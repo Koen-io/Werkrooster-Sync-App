@@ -467,6 +467,9 @@ class SettingsPanel(QWidget):
                 self.update_result.setText(
                     f"Je hebt de nieuwste versie (v{current_version()}). ✓"
                 )
+                from .update_dialog import UpToDateDialog
+
+                UpToDateDialog(current_version(), self).exec()
             else:
                 self.update_result.setObjectName("statusOk")
                 self.update_result.setText(f"Versie v{update.version} beschikbaar!")
