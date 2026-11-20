@@ -114,7 +114,7 @@ class IcsExportBackend(CalendarBackend):
         lines.append("END:VCALENDAR")
 
         try:
-            path.write_text("\r\n".join(lines) + "\r\n", encoding="utf-8")
+            path.write_text("\r\n".join(lines) + "\r\n", encoding="utf-8", newline="")
         except OSError as exc:
             raise CalendarError(f"Kan exportbestand niet schrijven: {exc}") from exc
         self.last_output = path

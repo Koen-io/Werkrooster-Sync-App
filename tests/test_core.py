@@ -415,6 +415,7 @@ def test_ics_export_roundtrip(tmp_path):
         backend.add_shift("", x)
     backend.finalize()
     assert backend.last_output is not None and backend.last_output.exists()
+    assert b"\r\r\n" not in backend.last_output.read_bytes()  # Windows: geen dubbele regeleinden
 
     # The exported file parses again and keeps the renamed shifts + reminders
     reparsed = parse_ics(backend.last_output)
