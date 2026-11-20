@@ -128,6 +128,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.release_tag || github.ref_name }}
+          target_commitish: ${{ github.sha }}
           name: Werkrooster Sync ${{ inputs.release_tag || github.ref_name }}
           body_path: RELEASE_NOTES.md
           files: |

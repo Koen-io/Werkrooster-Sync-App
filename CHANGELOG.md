@@ -12,6 +12,7 @@
 - Elke dienst in een .ics-bestand houdt nu hetzelfde kenmerk. Importeer je het bestand opnieuw, dan kan je agenda de dienst herkennen in plaats van hem dubbel te zetten (dat hangt wel van de agenda af).
 - Updates worden extra gecontroleerd voordat ze worden geïnstalleerd.
 - Nieuw, rustiger uiterlijk in drie stappen: rooster kiezen, nakijken, in je agenda.
+- Op Windows werd het agendabestand (.ics) krom opgeslagen, waardoor sommige agenda's het niet goed lazen. Dat is opgelost.
 
 ## v1.4.3
 - De app opent nu schermvullend (gemaximaliseerd), zodat alle knoppen in de titelbalk meteen zichtbaar zijn.
