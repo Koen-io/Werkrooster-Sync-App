@@ -11,6 +11,10 @@ on:
         description: "Publiceer een release met deze tag (bijv. v1.0.0); leeg = alleen bouwen"
         required: false
         default: ""
+      proef_versie:
+        description: "Bouw met dit versienummer zonder te publiceren (bijv. 1.9.9-proef)"
+        required: false
+        default: ""
 
 jobs:
   test:
@@ -46,10 +50,10 @@ jobs:
         with:
           python-version: "3.12"
       - name: Stamp release version
-        if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != '' || inputs.proef_versie != ''
         shell: bash
         run: |
-          TAG="${{ inputs.release_tag || github.ref_name }}"
+          TAG="${{ inputs.release_tag || inputs.proef_versie || github.ref_name }}"
           echo "__version__ = \"${TAG#v}\"" > werkrooster_sync/version.py
       - name: Build .app
         run: |
@@ -72,10 +76,10 @@ jobs:
         with:
           python-version: "3.12"
       - name: Stamp release version
-        if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != '' || inputs.proef_versie != ''
         shell: bash
         run: |
-          TAG="${{ inputs.release_tag || github.ref_name }}"
+          TAG="${{ inputs.release_tag || inputs.proef_versie || github.ref_name }}"
           echo "__version__ = \"${TAG#v}\"" > werkrooster_sync/version.py
       - name: Build .exe
         run: |
