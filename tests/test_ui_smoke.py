@@ -310,3 +310,44 @@ def test_feedback_laat_alles_zien_wat_meegaat(app):
     assert fb._logboek == logbook.tail()
     assert fb.log_tekst.toPlainText() in (fb._logboek, "(het logboek is leeg)")
     fb.close()
+
+
+def test_vinkjes_lezen_de_agenda_niet_opnieuw(app, venster):
+    from PySide6.QtWidgets import QCheckBox
+
+    w, agenda = venster
+    _oud_rooster(agenda, w.settings)
+    for i in list(agenda.items.values()):
+        if i.start.day in (30, 4) and "Cursus" not in i.title:
+            agenda.items[i.native_id] = replace(i, title=i.title + " - ruil met collega")
+    gelezen = []
+    echt = agenda.read_items
+    agenda.read_items = lambda *a: (gelezen.append(a), echt(*a))[1]
+
+    w.load_files([str(DEFINITIEF)])
+    wacht(app, w)
+    n = len(gelezen)
+    assert n and len(w._vraagdagen) == 2
+    vinkjes = [v for v in w.findChildren(QCheckBox) if v.text()[:2] in ("vr", "di")]
+    assert len(vinkjes) == 2 and not any(v.isChecked() for v in vinkjes)
+
+    vinkjes[0].setChecked(True)  # één dag vervangen
+    wacht(app, w)
+    w._kies_alles(True)          # alles vervangen
+    wacht(app, w)
+    assert len(gelezen) == n, "een keuze mag de agenda niet opnieuw inlezen"
+    assert len(w._vraagdagen) == 2, "de lijst met vinkjes blijft staan"
+    dagen = {d.dag: d for p in w.plannen for d in p.dagen}
+    assert not any(dagen[d].keuze_nodig for d in w._vraagdagen)
+
+    w._kies_alles(False)         # alles laten staan
+    wacht(app, w)
+    dagen = {d.dag: d for p in w.plannen for d in p.dagen}
+    assert all(dagen[d].keuze_nodig for d in w._vraagdagen)
+    assert w._soort(dagen[date(2027, 4, 30)]) == "laten"
+    assert len(gelezen) == n
+
+    w.start_bijwerken()          # bijwerken leest wél vers
+    wacht(app, w)
+    assert len(gelezen) > n
+    assert sum("ruil met collega" in i.title for i in agenda.items.values()) == 2

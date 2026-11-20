@@ -89,13 +89,24 @@ def laad_lettertype() -> str:
 
 
 def _pijl() -> str:
-    """Pijltje voor keuzelijsten. Qt kan in een stylesheet alleen een plaatje
-    uit een bestand tonen; dit schrijven we één keer in de tijdelijke map, zodat
-    het ook in de gebouwde app werkt zonder extra meegeleverde bestanden."""
-    pad = Path(tempfile.gettempdir()) / "werkroostersync-pijl.svg"
-    svg = ('<svg xmlns="http://www.w3.org/2000/svg" width="12" height="8">'
-           f'<path d="M1 1.5 6 6.5 11 1.5" fill="none" stroke="{TEXT_DIM}" '
-           'stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>')
+    """Pijltje voor keuzelijsten."""
+    return _svg_bestand("pijl", '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="8">'
+                        f'<path d="M1 1.5 6 6.5 11 1.5" fill="none" stroke="{TEXT_DIM}" '
+                        'stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>')
+
+
+def _vink() -> str:
+    """Vinkje in een aangevinkt vakje."""
+    return _svg_bestand("vink", '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14">'
+                        f'<path d="M2.5 7.5 5.5 10.5 11.5 3.5" fill="none" stroke="{ACCENT_TEXT}" '
+                        'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>')
+
+
+def _svg_bestand(naam: str, svg: str) -> str:
+    """Qt kan in een stylesheet alleen een plaatje uit een bestand tonen; dit
+    schrijven we één keer in de tijdelijke map, zodat het ook in de gebouwde
+    app werkt zonder extra meegeleverde bestanden."""
+    pad = Path(tempfile.gettempdir()) / f"werkroostersync-{naam}.svg"
     try:
         if not pad.exists() or pad.read_text() != svg:
             pad.write_text(svg)
@@ -221,7 +232,9 @@ QCheckBox::indicator {{
     width: 20px; height: 20px; border-radius: 5px;
     border: 1px solid {BORDER}; background: {INPUT_BG};
 }}
-QCheckBox::indicator:checked {{ background: {ACCENT}; border-color: {ACCENT}; }}
+QCheckBox::indicator:checked {{
+    background: {ACCENT}; border-color: {ACCENT}; image: url("{_vink()}");
+}}
 
 QMessageBox {{ background-color: {CARD}; }}
 QMessageBox QLabel {{ color: {TEXT}; font-size: 14px; }}

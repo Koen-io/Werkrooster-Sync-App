@@ -10,7 +10,7 @@ import copy
 from datetime import date
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -172,6 +172,10 @@ class MainWindow(QMainWindow):
         self.keuzes = bw.Keuzes()
         self._laten: set[date] = set()
         self._nee: set[str] = set()
+        #: Agenda één keer gelezen per controlescherm; keuzes rekenen hieruit.
+        self._momentopname: bw.Momentopname | None = None
+        #: Dagen waar de gebruiker per vinkje kiest: dag -> (keuzeveld, reden).
+        self._vraagdagen: dict[date, tuple[str, str]] = {}
         self._gevraagd: set[str] = set()
         self._eenmalig: dict[str, str] = {}
         self._worker: _Worker | None = None
@@ -471,6 +475,7 @@ class MainWindow(QMainWindow):
         self.lijst.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         sa.setWidget(inhoud)
         sa.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._lijst_sa = sa
         rl.addWidget(sa)
         lay.addWidget(rechts, stretch=1)
         return w
@@ -501,6 +506,8 @@ class MainWindow(QMainWindow):
             self.status.setVisible(True)
             herpolish(self.status, "statusError")
             return
+        self._momentopname = bw.Momentopname(backend)
+        self._vraagdagen = {}
         self._plan()
 
     def _toon_leeg(self, tekst: str) -> None:
@@ -515,11 +522,14 @@ class MainWindow(QMainWindow):
         self.zet_btn.setEnabled(False)
 
     def _plan(self) -> None:
-        """Vergelijk de roosters met de agenda (leest alleen), in de achtergrond."""
-        backend = self._koppeling()
+        """Vergelijk de roosters met de agenda (leest alleen). De eerste keer in
+        de achtergrond; daarna uit de momentopname, zonder de agenda te lezen."""
+        if self._momentopname is None:
+            self._momentopname = bw.Momentopname(self._koppeling())
+        backend = self._momentopname
         s = Settings.from_dict(self._indeel_instellingen().to_dict())
         roosters, keuzes = list(self.roosters), self.keuzes
-        self._toon_leeg("Je agenda wordt bekeken…")
+        al_gelezen = backend.gevuld
 
         def plan():
             naam, sleutel = bw.agenda_kiezen(backend, s.calendar_name, s.calendar_key)
@@ -537,6 +547,15 @@ class MainWindow(QMainWindow):
             self.plannen = plannen
             self._toon_plan()
 
+        if al_gelezen:  # alleen rekenen: meteen, zonder wachtscherm
+            try:
+                uit = plan()
+            except Exception as exc:  # noqa: BLE001 - zelfde afhandeling als de achtergrond
+                self._fout(str(exc))
+                return
+            klaar(uit)
+            return
+        self._toon_leeg("Je agenda wordt bekeken…")
         self._start(plan, klaar)
 
     def _per_dag(self) -> dict[date, tuple[bw.DagPlan, bw.Plan, Roster]]:
@@ -548,7 +567,7 @@ class MainWindow(QMainWindow):
         return dict(sorted(uit.items()))
 
     def _soort(self, dp: bw.DagPlan) -> str:
-        if dp.dag in self._laten:
+        if dp.dag in self._laten or (dp.keuze_nodig and dp.dag in self._vraagdagen):
             return "laten"
         if dp.keuze_nodig:
             return "kiezen"
@@ -563,6 +582,8 @@ class MainWindow(QMainWindow):
 
     def _toon_plan(self) -> None:
         dagen = self._per_dag()
+        balk = self._lijst_sa.verticalScrollBar()
+        positie = balk.value()  # na een vinkje blijft de lijst waar hij was
         # tegels
         leeg_layout(self.tegels)
         tel: dict[str, int] = {}
@@ -623,6 +644,7 @@ class MainWindow(QMainWindow):
             self._dagrijen(dp, p, r)
         self.lijst.addStretch()
         self._ververs_knop()
+        QTimer.singleShot(0, lambda: balk.setValue(positie))
 
     def _melding_regel(self, icoon: str, kleur: str, html_tekst: str) -> QWidget:
         w = QWidget()
@@ -673,9 +695,15 @@ class MainWindow(QMainWindow):
             setattr(self.keuzes, k, v)
         self._plan()
 
-    def _kies_dag(self, veld: str, dag: date) -> None:
-        getattr(self.keuzes, veld).add(dag)
-        self._plan()
+    def _kies_dag(self, veld: str, dag: date, aan: bool = True) -> None:
+        (getattr(self.keuzes, veld).add if aan else getattr(self.keuzes, veld).discard)(dag)
+        # Na het afhandelen van de klik: het vinkje zelf wordt opnieuw opgebouwd.
+        QTimer.singleShot(0, self._plan)
+
+    def _kies_alles(self, aan: bool) -> None:
+        for dag, (veld, _reden) in self._vraagdagen.items():
+            (getattr(self.keuzes, veld).add if aan else getattr(self.keuzes, veld).discard)(dag)
+        QTimer.singleShot(0, self._plan)
 
     def _laat(self, dagen: list[date], nee: str = "") -> None:
         self._laten |= set(dagen)
@@ -722,17 +750,44 @@ class MainWindow(QMainWindow):
                 "Wil je toch de diensten toevoegen? Hij past dan niets aan en verwijdert niets.",
                 [("Toch alleen toevoegen", lambda: self._kies(onbegrepen_bevestigd=True)),
                  ("Niets doen", lambda: self._laat(onbegrepen))])
-        for dp, p, _r in open_:
+        # Dagen met iets van de app dat niet precies past: onthouden, ook als
+        # ze na een vinkje geen vraag meer zijn, zodat de lijst niet verspringt.
+        for dp, p, _r in dagen.values():
+            if not dp.keuze_nodig or dp.dag in self._laten:
+                continue
             if dp.uitkomst == bw.ZELF_AANGEPAST:
-                self._vraagkaart(
-                    f"{dag_kort(dp.dag)}: {dp.reden}. Wil je het overschrijven met het rooster?",
-                    [("Overschrijven", lambda d=dp.dag: self._kies_dag("overschrijf_aangepast", d)),
-                     ("Laten staan", lambda d=dp.dag: self._laat([d]))])
+                self._vraagdagen.setdefault(dp.dag, ("overschrijf_aangepast", dp.reden))
             elif dp.uitkomst == bw.MOGELIJK_DUBBEL and not p.oude_items:
-                self._vraagkaart(
-                    f"{dag_kort(dp.dag)}: {dp.reden}. Vervangen door wat in het rooster staat?",
-                    [("Vervangen", lambda d=dp.dag: self._kies_dag("vervang_oude_items", d)),
-                     ("Laten staan", lambda d=dp.dag: self._laat([d]))])
+                self._vraagdagen.setdefault(dp.dag, ("vervang_oude_items", dp.reden))
+        if self._vraagdagen:
+            self._vinkjeskaart()
+
+    def _vinkjeskaart(self) -> None:
+        n = len(self._vraagdagen)
+        vak, vl = kaart("warnBox")
+        vl.setContentsMargins(18, 14, 18, 14)
+        t = label(f"Op {n} {'dag' if n == 1 else 'dagen'} staat al iets van de app dat niet "
+                  "precies bij het rooster past, bijvoorbeeld omdat je het zelf hebt aangepast. "
+                  "Vink aan wat het rooster mag vervangen. Wat je niet aanvinkt, blijft staan.",
+                  "", wrap=True)
+        t.setStyleSheet("font-size: 15px;")
+        vl.addWidget(t)
+        rij = QHBoxLayout()
+        rij.addWidget(knop("Alles vervangen", "smallPrimary", lambda: self._kies_alles(True)))
+        rij.addWidget(knop("Alles laten staan", "small", lambda: self._kies_alles(False)))
+        rij.addStretch()
+        vl.addLayout(rij)
+        for dag, (veld, reden) in sorted(self._vraagdagen.items()):
+            regel = QHBoxLayout()
+            vink = QCheckBox(dag_kort(dag))
+            vink.setChecked(dag in getattr(self.keuzes, veld))
+            vink.toggled.connect(lambda aan, d=dag, v=veld: self._kies_dag(v, d, aan))
+            regel.addWidget(vink)
+            uitleg = label(reden, "statusDim", wrap=True)
+            regel.addWidget(uitleg, stretch=1)
+            vl.addLayout(regel)
+        self.lijst.addWidget(vak)
+        self.lijst.addSpacing(10)
 
     def _rij(self, datum: str, kleur: str | None, naam: str, tijd: str, taak: str,
              pil: QWidget | None, gedimd: bool = False) -> None:
@@ -963,8 +1018,8 @@ class MainWindow(QMainWindow):
             for dp in p.dagen:
                 if dp.keuze_nodig and dp.dag not in uit.dagen_klaar:
                     uit.niet_bijgewerkt.setdefault(
-                        dp.dag, "je koos om het te laten staan" if dp.dag in self._laten
-                        else dp.reden)
+                        dp.dag, "je koos om het te laten staan"
+                        if dp.dag in self._laten or dp.dag in self._vraagdagen else dp.reden)
         self._naar_klaar()
         delen = [f"{n} {w}" for n, w in ((uit.toegevoegd, "toegevoegd"),
                                          (uit.bijgewerkt, "aangepast"),

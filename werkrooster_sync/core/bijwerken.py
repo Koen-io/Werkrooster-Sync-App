@@ -16,7 +16,7 @@ import json
 import logging
 import os
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -184,6 +184,36 @@ class Gelezen:
         raw = "\x1f".join([i.native_id, i.title.strip(), (i.location or "").strip(),
                            _tijd_sleutel(i.start, i.end, i.all_day), *_regels(i.notes)])
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
+class Momentopname:
+    """Leest de agenda één keer en geeft daarna dezelfde antwoorden uit het
+    geheugen. Alleen voor het controlescherm, zodat een keuze (een vinkje)
+    niet steeds de hele agenda opnieuw laat inlezen. Bijwerken zelf leest
+    altijd vers. Alle andere aanroepen gaan gewoon door naar de agenda."""
+
+    def __init__(self, backend: CalendarBackend):
+        self._backend = backend
+        self._items: dict[tuple, list[AgendaItem]] = {}
+        self._agendas: list[tuple[str, str]] | None = None
+
+    @property
+    def gevuld(self) -> bool:
+        return bool(self._items)
+
+    def __getattr__(self, naam):
+        return getattr(self._backend, naam)
+
+    def calendars(self) -> list[tuple[str, str]]:
+        if self._agendas is None:
+            self._agendas = self._backend.calendars()
+        return list(self._agendas)
+
+    def read_items(self, name: str, key: str, start: datetime, end: datetime) -> list[AgendaItem]:
+        sleutel = (name, key, start, end)
+        if sleutel not in self._items:
+            self._items[sleutel] = self._backend.read_items(name, key, start, end)
+        return [replace(i) for i in self._items[sleutel]]  # kopieën: _lees past notes aan
 
 
 def _lees(backend: CalendarBackend, agenda: str, nummer: str,

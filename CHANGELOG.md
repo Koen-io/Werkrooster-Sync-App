@@ -1,5 +1,10 @@
 # Wijzigingen
 
+## v2.0.1
+- Staat er op meerdere dagen iets in je agenda dat niet precies bij het rooster past? Je kiest nu per dag met een vinkje, of in één keer met "Alles vervangen" of "Alles laten staan".
+- Een keuze maken gaat nu meteen: de app leest je agenda niet meer opnieuw in bij elk vinkje of elke knop. Pas bij "Zet in mijn agenda" kijkt hij nog één keer vers.
+- Aangevinkte vakjes hebben nu een duidelijk vinkje.
+
 ## v2.0.0
 - Nieuw rooster over een oud rooster heen? De app werkt je agenda nu per dag bij: gewijzigde diensten worden aangepast, vervallen diensten gaan eruit. Je eigen afspraken blijven altijd staan.
 - Voordat er iets verandert zie je per dag wat er gebeurt. Gaat er een dienst uit je agenda, dan vraagt de app eerst of dat mag.
