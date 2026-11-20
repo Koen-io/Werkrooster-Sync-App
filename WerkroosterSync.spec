@@ -41,7 +41,7 @@ a = Analysis(
     ["run_app.py"],
     pathex=["."],
     binaries=_cffi_binaries,
-    datas=[("assets", "assets")] + _cffi_datas,
+    datas=[("assets", "assets"), ("werkrooster_sync/fonts", "fonts")] + _cffi_datas,
     hiddenimports=hiddenimports,
     excludes=excludes,
     noarchive=False,

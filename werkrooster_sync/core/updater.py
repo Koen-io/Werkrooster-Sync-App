@@ -16,6 +16,7 @@ Install strategy per platform:
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
@@ -76,6 +77,8 @@ class UpdateInfo:
     asset_name: str
     asset_url: str
     asset_size: int
+    #: SHA-256 of the file as published by GitHub (hex), "" when unknown.
+    asset_sha256: str = ""
 
     @property
     def tag(self) -> str:
@@ -142,12 +145,53 @@ def check_for_update(platform: str | None = None) -> UpdateInfo | None:
         asset_name=asset["name"],
         asset_url=asset["browser_download_url"],
         asset_size=int(asset.get("size", 0)),
+        asset_sha256=_digest(asset),
     )
+
+
+#: Updates are only ever downloaded from the releases of this repository.
+DOWNLOAD_PREFIX = "https://github.com/Koen-io/Werkrooster-Sync-App/releases/download/"
+
+
+def _digest(asset: dict) -> str:
+    """The sha256 GitHub publishes for a release file, as lowercase hex."""
+    value = str(asset.get("digest") or "")
+    if value.startswith("sha256:"):
+        value = value[7:].strip().lower()
+        if len(value) == 64 and all(c in "0123456789abcdef" for c in value):
+            return value
+    return ""
+
+
+def _vertrouwde_url(update: UpdateInfo) -> bool:
+    """Precies .../releases/download/<tag van deze versie>/<bestandsnaam>: geen
+    omweg via "..", geen andere repository en geen oudere release onder een
+    nieuw versienummer."""
+    url = update.asset_url
+    if not url.startswith(DOWNLOAD_PREFIX) or any(
+            t in url.casefold() for t in ("..", "%2e", "%2f", "%5c", "\\", "?", "#")):
+        return False
+    rest = url[len(DOWNLOAD_PREFIX):]
+    return rest in (f"v{update.version}/{update.asset_name}",
+                    f"{update.version}/{update.asset_name}")
 
 
 def download(update: UpdateInfo, progress=None) -> Path:
     """Download the asset to a temp file; ``progress(done, total)`` optional."""
-    dest = Path(tempfile.mkdtemp(prefix="werkroostersync-update-")) / update.asset_name
+    # Checked before anything is fetched: right place, and a known size and
+    # fingerprint to compare the download with.
+    if not _vertrouwde_url(update):
+        raise UpdateError("De update komt niet van de vertrouwde downloadplek.")
+    if not update.asset_sha256 or update.asset_size <= 0:
+        raise UpdateError(
+            "Deze update kan niet gecontroleerd worden. Download hem handmatig "
+            f"via {RELEASES_PAGE}"
+        )
+    # Path(...).name: the file name comes from the internet.
+    dest = (Path(tempfile.mkdtemp(prefix="werkroostersync-update-"))
+            / (Path(update.asset_name).name or "update"))
+    sha = hashlib.sha256()
+    done = 0
     try:
         req = urllib.request.Request(
             update.asset_url, headers={"User-Agent": USER_AGENT}
@@ -155,18 +199,27 @@ def download(update: UpdateInfo, progress=None) -> Path:
         with urllib.request.urlopen(
             req, timeout=60, context=_ssl_context()
         ) as resp, open(dest, "wb") as out:
-            total = int(resp.headers.get("Content-Length") or update.asset_size or 0)
-            done = 0
+            total = update.asset_size
             while True:
                 chunk = resp.read(256 * 1024)
                 if not chunk:
                     break
-                out.write(chunk)
                 done += len(chunk)
+                if done > total:
+                    break  # larger than announced: stop, rejected below
+                out.write(chunk)
+                sha.update(chunk)
                 if progress:
                     progress(done, total)
     except Exception as exc:
+        shutil.rmtree(dest.parent, ignore_errors=True)
         raise UpdateError(f"Download mislukt: {exc}") from exc
+    if done != update.asset_size or sha.hexdigest() != update.asset_sha256:
+        shutil.rmtree(dest.parent, ignore_errors=True)
+        raise UpdateError(
+            "De gedownloade update klopt niet met wat GitHub heeft gepubliceerd "
+            "(grootte of vingerafdruk wijkt af). Er is niets geïnstalleerd."
+        )
     return dest
 
 
@@ -213,20 +266,14 @@ def _install_macos(zip_path: Path) -> None:
             check=True, capture_output=True,
         )
         new_app = next(extract_dir.glob("*.app"))
+        if new_app.is_symlink():
+            raise UpdateError("De update is geen echte app. Er is niets geïnstalleerd.")
     except (subprocess.CalledProcessError, StopIteration) as exc:
         raise UpdateError(f"Uitpakken van de update mislukt: {exc}") from exc
+    if not any((new_app / "Contents" / "MacOS").glob("*")):
+        raise UpdateError("De update bevat geen werkende app. Er is niets geïnstalleerd.")
 
-    backup = zip_path.parent / (app_bundle.name + ".old")
-    try:
-        # Move the old bundle aside, then the new one into its place.
-        subprocess.run(["mv", str(app_bundle), str(backup)], check=True,
-                       capture_output=True)
-        subprocess.run(["mv", str(new_app), str(app_bundle)], check=True,
-                       capture_output=True)
-    except subprocess.CalledProcessError as exc:
-        raise UpdateError(
-            f"Installeren mislukt (geen schrijfrechten?): {exc.stderr.decode(errors='ignore')}"
-        ) from exc
+    _swap_macos_app(new_app, app_bundle, zip_path.parent / (app_bundle.name + ".old"))
 
     # In-app downloads carry no quarantine flag, so Gatekeeper will not show
     # the "open anyway" dance again — strip it anyway in case anything set it.
@@ -236,6 +283,30 @@ def _install_macos(zip_path: Path) -> None:
     )
     subprocess.Popen(["open", "-n", str(app_bundle)])
     raise SystemExit(0)
+
+
+def _swap_macos_app(new_app: Path, app_bundle: Path, backup: Path) -> None:
+    """Move the old bundle aside and the new one into its place. If the
+    second step fails the old app is put back, so the user is never left
+    without an app. Separated from relaunching so it can be tested."""
+    try:
+        shutil.move(str(app_bundle), str(backup))
+    except OSError as exc:
+        raise UpdateError(f"Installeren mislukt (geen schrijfrechten?): {exc}") from exc
+    try:
+        shutil.move(str(new_app), str(app_bundle))
+    except OSError as exc:
+        shutil.rmtree(app_bundle, ignore_errors=True)  # half-moved copy
+        try:
+            shutil.move(str(backup), str(app_bundle))
+        except OSError:
+            raise UpdateError(
+                "Installeren mislukt en terugzetten lukte niet. De vorige "
+                f"versie staat in {backup}. Download de app opnieuw via {RELEASES_PAGE}"
+            ) from exc
+        raise UpdateError(
+            f"Installeren mislukt; de vorige versie is teruggezet. ({exc})"
+        ) from exc
 
 
 def _swap_windows_exe(exe_path: Path, current: Path) -> None:

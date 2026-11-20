@@ -13,21 +13,18 @@ class CalendarError(Exception):
 
 
 @dataclass
-class ExistingEvent:
-    """One event found in the target calendar during a scan."""
+class AgendaItem:
+    """A complete calendar item, as read from or written to a calendar."""
 
-    title: str  # casefolded
-    stamp: str  # yyyymmddhhmm of the start
-    sync_id: str = ""  # from the [WerkroosterSync:…] marker, if present
-    concept: bool = False  # carries the concept tag (or "(concept)" title)
-
-    @property
-    def key(self) -> tuple[str, str]:
-        return (self.title, self.stamp)
-
-    @property
-    def date(self) -> str:
-        return self.stamp[:8]
+    native_id: str = ""  # the calendar's own id for the item ("" = new)
+    title: str = ""
+    start: datetime = datetime.min
+    end: datetime = datetime.min
+    all_day: bool = False
+    notes: str = ""
+    location: str = ""
+    #: Only used when an item is added; afterwards the reminder is the user's.
+    reminder_minutes: int | None = None
 
 
 class CalendarBackend(ABC):
@@ -56,77 +53,31 @@ class CalendarBackend(ABC):
     def add_shift(self, calendar_name: str, shift: Shift) -> None:
         """Create one calendar item for *shift* in *calendar_name*."""
 
-    @abstractmethod
-    def existing_keys_list(
-        self, calendar_name: str, start: datetime, end: datetime
-    ) -> list[tuple[str, str]]:
-        """Dedupe keys (title, yyyymmddhhmm) of all events in the range,
-        including duplicates."""
-
-    def existing_sync_ids(
-        self, calendar_name: str, start: datetime, end: datetime
-    ) -> set[str]:
-        """Sync-IDs from [WerkroosterSync:…] markers found in event notes.
-
-        Backends that cannot read notes return an empty set; deduplication
-        then falls back to title + start time.
-        """
-        return set()
-
-    def scan_events(
-        self, calendar_name: str, start: datetime, end: datetime
-    ) -> list[ExistingEvent]:
-        """All events in the range as :class:`ExistingEvent` rows.
-
-        The default builds them from the simpler queries; backends override
-        this to fetch everything (incl. markers and concept tags) in one go.
-        """
-        ids = self.existing_sync_ids(calendar_name, start, end)
-        events = [
-            ExistingEvent(t, s)
-            for t, s in self.existing_keys_list(calendar_name, start, end)
-        ]
-        known = {e.sync_id for e in events if e.sync_id}
-        for sync_id in ids - known:
-            events.append(ExistingEvent("", "000000000000", sync_id))
-        return events
-
-    def scan_existing(
-        self, calendar_name: str, start: datetime, end: datetime
-    ) -> tuple[list[tuple[str, str]], set[str]]:
-        """One combined scan: (dedupe keys, sync-IDs) of events in the range."""
-        events = self.scan_events(calendar_name, start, end)
-        return (
-            [e.key for e in events],
-            {e.sync_id for e in events if e.sync_id},
-        )
-
-    def remove_by_sync_ids(
-        self, calendar_name: str, start: datetime, end: datetime, sync_ids: set[str]
-    ) -> int:
-        """Delete the app-created events in the range whose marker matches one
-        of *sync_ids*. Returns the number removed."""
-        raise CalendarError(f"{self.label} kan geen items verwijderen.")
-
-    def remove_duplicates(self, calendar_name: str, start: datetime, end: datetime) -> int:
-        """Delete surplus copies of duplicated events. Returns number removed.
-
-        Optional: backends that cannot delete raise CalendarError.
-        """
-        raise CalendarError(f"{self.label} ondersteunt geen verwijderen van dubbele items.")
-
     #: Whether this backend can see the target calendar at all. False for
     #: export-style backends: duplicate checking and removal then have to
     #: happen in the receiving calendar app.
     can_inspect_calendar: bool = True
 
-    def count_synced(self, calendar_name: str, start: datetime, end: datetime) -> int:
-        """Number of items in the range that were created by this app
-        (recognised by their [WerkroosterSync:…] marker)."""
-        raise CalendarError(f"{self.label} kan de agenda niet inzien.")
+    # ------------------------------------------------------------------
+    # Version 2: complete items, addressed by the calendar's own ids.
+    # *key* is the fixed id of the calendar itself; when it is given the
+    # calendar is looked up by that id and never by its name alone.
+    # ------------------------------------------------------------------
+    def calendars(self) -> list[tuple[str, str]]:
+        """All calendars as (name, key); key is "" when there is no fixed id."""
+        return [(name, "") for name in self.list_calendars()]
 
-    def remove_synced(self, calendar_name: str, start: datetime, end: datetime) -> int:
-        """Delete all items in the range that were created by this app.
-        Items the user made themselves are never touched. Returns the
-        number removed."""
-        raise CalendarError(f"{self.label} kan geen items verwijderen.")
+    def read_items(self, name: str, key: str, start: datetime, end: datetime) -> list[AgendaItem]:
+        raise CalendarError("Deze koppeling kan de agenda niet inzien.")
+
+    def add_item(self, name: str, key: str, item: AgendaItem) -> str:
+        """Add *item*; returns the calendar's own id of the new item."""
+        raise CalendarError("Deze koppeling kan niet toevoegen.")
+
+    def update_item(self, name: str, key: str, item: AgendaItem) -> None:
+        """Set title, times and notes of the item with ``item.native_id``.
+        Reminder, colour and location are left as the user has them."""
+        raise CalendarError("Deze koppeling kan niet aanpassen.")
+
+    def delete_item(self, name: str, key: str, native_id: str) -> None:
+        raise CalendarError("Deze koppeling kan niet verwijderen.")

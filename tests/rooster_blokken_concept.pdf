@@ -1,0 +1,396 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [6 0 R 8 0 R 10 0 R 12 0 R] /Count 4 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Length 5371 >>
+stream
+BT
+/F1 9.965 Tf 1 0 0 1 33.18 479.75 Tm (Periode:) Tj
+/F1 9.965 Tf 1 0 0 1 138.06 479.75 Tm (  13 / 2027  10/05/2027 - 10/06/2027) Tj
+/F1 9.965 Tf 1 0 0 1 138.06 513.77 Tm (30/04/2027) Tj
+/F1 9.965 Tf 1 0 0 1 32.85 513.60 Tm (Generatiedatum:) Tj
+/F1 9.965 Tf 1 0 0 1 194.76 513.77 Tm (  17:38) Tj
+/F1 9.965 Tf 1 0 0 1 33.18 496.76 Tm (Medewerker:) Tj
+/F1 9.965 Tf 1 0 0 1 138.06 496.76 Tm (  12345678 Voorbeeld, P) Tj
+/F2 14.947 Tf 1 0 0 1 315.59 552.03 Tm (Concept Medewerker Rooster) Tj
+/F2 9.965 Tf 1 0 0 1 30.35 459.91 Tm (Conceptrooster medewerker 30/04/2027 17:38:17; aan dit rooster kunnen geen rechten worden ontleend.) Tj
+/F1 9.965 Tf 1 0 0 1 143.73 434.80 Tm (Soort  Start-Eind) Tj
+/F1 9.965 Tf 1 0 0 1 30.35 434.80 Tm (Dag) Tj
+/F1 9.965 Tf 1 0 0 1 257.12 434.80 Tm (  Tijdstippen) Tj
+/F1 9.965 Tf 1 0 0 1 87.04 434.80 Tm (Datum) Tj
+/F1 9.965 Tf 1 0 0 1 333.65 434.80 Tm (  Noodhulp) Tj
+/F1 9.965 Tf 1 0 0 1 333.65 423.34 Tm (dienst) Tj
+/F1 9.965 Tf 1 0 0 1 384.68 434.80 Tm (Project) Tj
+/F1 9.965 Tf 1 0 0 1 506.57 434.80 Tm (  Activiteit) Tj
+/F1 9.965 Tf 1 0 0 1 657.46 434.80 Tm (  Resultaat) Tj
+/F1 9.965 Tf 1 0 0 1 657.46 423.34 Tm (gebied) Tj
+/F1 9.965 Tf 1 0 0 1 708.49 434.97 Tm (IBT ) Tj
+/F1 9.965 Tf 1 0 0 1 708.49 423.51 Tm (snelcode) Tj
+/F1 9.965 Tf 1 0 0 1 759.51 434.80 Tm (Locatie) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 88.17 Tm (17/05/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 88.17 Tm (Maandag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 88.17 Tm (  [Rust] 23:00-24:00) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 74.67 Tm (DIENST 07:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 74.67 Tm (  07:00-11:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 74.67 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 62.67 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 50.67 Tm (11:30-12:00) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 50.67 Tm (  Pauze \(onbetaald\)) Tj
+/F1 9.965 Tf 1 0 0 1 72.00 35.12 Tm (Afgedrukt op 30/04/2027 17:38 door 12345678  Rapport   BVCM 3.2.4.5\\1) Tj
+/F1 9.965 Tf 1 0 0 1 441.37 35.12 Tm (  Pagina 1 van 4) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 401.67 Tm (10/05/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 401.67 Tm (Maandag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 401.67 Tm (  [Rust] 19:00-24:00) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 388.17 Tm (DIENST 07:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 388.17 Tm (  07:00-11:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 388.17 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 376.17 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 364.17 Tm (11:30-12:00) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 364.17 Tm (  Pauze \(onbetaald\)) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 350.67 Tm (12:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 350.67 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 338.67 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 326.67 Tm (11/05/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 326.67 Tm (Dinsdag) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 313.17 Tm (12/05/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 313.17 Tm (Woensdag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 313.17 Tm (  [Rust] 00:00-07:00) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 299.67 Tm (DIENST 07:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 299.67 Tm (  07:00-11:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 299.67 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 287.67 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 275.67 Tm (11:30-12:00) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 275.67 Tm (  Pauze \(onbetaald\)) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 262.17 Tm (12:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 262.17 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 250.17 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 238.17 Tm (13/05/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 238.17 Tm (Donderdag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 238.17 Tm (  DIENST 07:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 238.17 Tm (  07:00-11:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 238.17 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 226.17 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 214.17 Tm (11:30-12:00) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 214.17 Tm (  Pauze \(onbetaald\)) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 200.67 Tm (12:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 200.67 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 188.67 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 176.67 Tm (14/05/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 176.67 Tm (Vrijdag) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 163.17 Tm (15/05/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 163.17 Tm (Zaterdag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 163.17 Tm (  DIENST 07:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 163.17 Tm (  07:00-11:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 163.17 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 151.17 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 139.17 Tm (11:30-12:00) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 139.17 Tm (  Pauze \(onbetaald\)) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 125.67 Tm (12:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 125.67 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 113.67 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 101.67 Tm (16/05/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 101.67 Tm (Zondag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 101.67 Tm (  [Rust] 00:00-24:00) Tj
+ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842.25 595.50] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 5 0 R >>
+endobj
+7 0 obj
+<< /Length 6542 >>
+stream
+BT
+/F1 9.965 Tf 1 0 0 1 143.73 556.69 Tm (Soort  Start-Eind) Tj
+/F1 9.965 Tf 1 0 0 1 30.35 556.69 Tm (Dag) Tj
+/F1 9.965 Tf 1 0 0 1 257.12 556.69 Tm (  Tijdstippen) Tj
+/F1 9.965 Tf 1 0 0 1 87.04 556.69 Tm (Datum) Tj
+/F1 9.965 Tf 1 0 0 1 333.65 556.69 Tm (  Noodhulp) Tj
+/F1 9.965 Tf 1 0 0 1 333.65 545.23 Tm (dienst) Tj
+/F1 9.965 Tf 1 0 0 1 384.68 556.69 Tm (Project) Tj
+/F1 9.965 Tf 1 0 0 1 506.57 556.69 Tm (  Activiteit) Tj
+/F1 9.965 Tf 1 0 0 1 657.46 556.69 Tm (  Resultaat) Tj
+/F1 9.965 Tf 1 0 0 1 657.46 545.23 Tm (gebied) Tj
+/F1 9.965 Tf 1 0 0 1 708.49 556.86 Tm (IBT ) Tj
+/F1 9.965 Tf 1 0 0 1 708.49 545.40 Tm (snelcode) Tj
+/F1 9.965 Tf 1 0 0 1 759.51 556.69 Tm (Locatie) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 49.56 Tm (28/05/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 49.56 Tm (Vrijdag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 49.56 Tm (  DIENST 07:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 49.56 Tm (  07:00-11:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 49.56 Tm (  Administratief afhandelen) Tj
+/F1 9.965 Tf 1 0 0 1 72.00 35.12 Tm (Afgedrukt op 30/04/2027 17:38 door 12345678  Rapport   BVCM 3.2.4.5\\1) Tj
+/F1 9.965 Tf 1 0 0 1 441.37 35.12 Tm (  Pagina 2 van 4) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 523.56 Tm (17/05/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 523.56 Tm (Maandag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 523.56 Tm (  DIENST 07:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 523.56 Tm (  12:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 523.56 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 511.56 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 499.56 Tm (18/05/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 499.56 Tm (Dinsdag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 499.56 Tm (  [Rust] 00:00-23:59) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 486.06 Tm (19/05/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 486.06 Tm (Woensdag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 486.06 Tm (  DIENST 07:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 486.06 Tm (  07:00-11:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 486.06 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 474.06 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 462.06 Tm (11:30-12:00) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 462.06 Tm (  Pauze \(onbetaald\)) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 448.56 Tm (12:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 448.56 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 436.56 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 424.56 Tm (20/05/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 424.56 Tm (Donderdag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 424.56 Tm (  [Rust] 00:00-24:00) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 411.06 Tm (21/05/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 411.06 Tm (Vrijdag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 411.06 Tm (  [Rust] 00:00-07:00) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 397.56 Tm (DIENST 07:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 397.56 Tm (  07:00-11:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 397.56 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 385.56 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 373.56 Tm (11:30-12:00) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 373.56 Tm (  Pauze \(onbetaald\)) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 360.06 Tm (12:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 360.06 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 348.06 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 336.06 Tm (22/05/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 336.06 Tm (Zaterdag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 336.06 Tm (  DIENST 07:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 336.06 Tm (  07:00-11:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 336.06 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 324.06 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 312.06 Tm (11:30-12:00) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 312.06 Tm (  Pauze \(onbetaald\)) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 298.56 Tm (12:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 298.56 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 286.56 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 274.56 Tm (23/05/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 274.56 Tm (Zondag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 274.56 Tm (  [Rust] 00:00-24:00) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 261.06 Tm (24/05/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 261.06 Tm (Maandag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 261.06 Tm (  DIENST 07:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 261.06 Tm (  07:00-11:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 261.06 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 249.06 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 237.06 Tm (11:30-12:00) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 237.06 Tm (  Pauze \(onbetaald\)) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 223.56 Tm (12:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 223.56 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 211.56 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 199.56 Tm (25/05/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 199.56 Tm (Dinsdag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 199.56 Tm (  DIENST 07:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 199.56 Tm (  07:00-11:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 199.56 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 187.56 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 175.56 Tm (11:30-12:00) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 175.56 Tm (  Pauze \(onbetaald\)) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 162.06 Tm (12:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 162.06 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 150.06 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 138.06 Tm (26/05/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 138.06 Tm (Woensdag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 138.06 Tm (  VRIJ 00:00-24:00) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 124.56 Tm ([Vrije tijd] 00:00-24:00) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 111.06 Tm (27/05/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 111.06 Tm (Donderdag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 111.06 Tm (  DIENST 09:00-18:30) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 111.06 Tm (  09:00-13:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 111.06 Tm (  Werkoverleg voeren) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 99.06 Tm (Memo: Activiteit: Veiligheidsdag) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 87.06 Tm (13:30-14:00) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 87.06 Tm (  Pauze \(onbetaald\)) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 73.56 Tm (14:00-18:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 73.56 Tm (  Werkoverleg voeren) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 61.56 Tm (Memo: Activiteit: Veiligheidsdag) Tj
+ET
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842.25 595.50] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 7 0 R >>
+endobj
+9 0 obj
+<< /Length 6306 >>
+stream
+BT
+/F1 9.965 Tf 1 0 0 1 143.73 556.69 Tm (Soort  Start-Eind) Tj
+/F1 9.965 Tf 1 0 0 1 30.35 556.69 Tm (Dag) Tj
+/F1 9.965 Tf 1 0 0 1 257.12 556.69 Tm (  Tijdstippen) Tj
+/F1 9.965 Tf 1 0 0 1 87.04 556.69 Tm (Datum) Tj
+/F1 9.965 Tf 1 0 0 1 333.65 556.69 Tm (  Noodhulp) Tj
+/F1 9.965 Tf 1 0 0 1 333.65 545.23 Tm (dienst) Tj
+/F1 9.965 Tf 1 0 0 1 384.68 556.69 Tm (Project) Tj
+/F1 9.965 Tf 1 0 0 1 506.57 556.69 Tm (  Activiteit) Tj
+/F1 9.965 Tf 1 0 0 1 657.46 556.69 Tm (  Resultaat) Tj
+/F1 9.965 Tf 1 0 0 1 657.46 545.23 Tm (gebied) Tj
+/F1 9.965 Tf 1 0 0 1 708.49 556.86 Tm (IBT ) Tj
+/F1 9.965 Tf 1 0 0 1 708.49 545.40 Tm (snelcode) Tj
+/F1 9.965 Tf 1 0 0 1 759.51 556.69 Tm (Locatie) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 523.56 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 511.56 Tm (11:30-12:00) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 511.56 Tm (  Pauze \(onbetaald\)) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 498.06 Tm (12:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 498.06 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 486.06 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 72.06 Tm (09/06/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 72.06 Tm (Woensdag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 72.06 Tm (  DIENST 07:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 72.06 Tm (  07:00-11:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 72.06 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 60.06 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 48.06 Tm (11:30-12:00) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 48.06 Tm (  Pauze \(onbetaald\)) Tj
+/F1 9.965 Tf 1 0 0 1 72.00 35.12 Tm (Afgedrukt op 30/04/2027 17:38 door 12345678  Rapport   BVCM 3.2.4.5\\1) Tj
+/F1 9.965 Tf 1 0 0 1 441.37 35.12 Tm (  Pagina 3 van 4) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 474.06 Tm (29/05/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 474.06 Tm (Zaterdag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 474.06 Tm (  [Rust] 19:00-24:00) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 460.56 Tm (30/05/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 460.56 Tm (Zondag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 460.56 Tm (  DIENST 07:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 460.56 Tm (  07:00-11:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 460.56 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 448.56 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 436.56 Tm (11:30-12:00) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 436.56 Tm (  Pauze \(onbetaald\)) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 423.06 Tm (12:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 423.06 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 411.06 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 399.06 Tm (31/05/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 399.06 Tm (Maandag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 399.06 Tm (  [Rust] 00:00-24:00) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 385.56 Tm (01/06/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 385.56 Tm (Dinsdag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 385.56 Tm (  [Rust] 00:00-24:00) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 372.06 Tm (02/06/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 372.06 Tm (Woensdag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 372.06 Tm (  DIENST 07:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 372.06 Tm (  07:00-11:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 372.06 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 360.06 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 348.06 Tm (11:30-12:00) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 348.06 Tm (  Pauze \(onbetaald\)) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 334.56 Tm (12:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 334.56 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 322.56 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 310.56 Tm (03/06/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 310.56 Tm (Donderdag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 310.56 Tm (  [Rust] 00:00-24:00) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 297.06 Tm (04/06/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 297.06 Tm (Vrijdag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 297.06 Tm (  [Rust] 00:00-24:00) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 283.56 Tm (05/06/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 283.56 Tm (Zaterdag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 283.56 Tm (  DIENST 07:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 283.56 Tm (  07:00-11:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 283.56 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 271.56 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 259.56 Tm (11:30-12:00) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 259.56 Tm (  Pauze \(onbetaald\)) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 246.06 Tm (12:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 246.06 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 234.06 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 222.06 Tm (06/06/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 222.06 Tm (Zondag) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 208.56 Tm (07/06/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 208.56 Tm (Maandag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 208.56 Tm (  DIENST 07:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 208.56 Tm (  07:00-11:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 208.56 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 196.56 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 184.56 Tm (11:30-12:00) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 184.56 Tm (  Pauze \(onbetaald\)) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 171.06 Tm (12:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 171.06 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 159.06 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 147.06 Tm (08/06/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 147.06 Tm (Dinsdag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 147.06 Tm (  [Rust] 00:00-07:00) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 133.56 Tm (DIENST 07:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 133.56 Tm (  07:00-11:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 133.56 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 121.56 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 109.56 Tm (11:30-12:00) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 109.56 Tm (  Pauze \(onbetaald\)) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 96.06 Tm (12:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 96.06 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 84.06 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+ET
+endstream
+endobj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842.25 595.50] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 9 0 R >>
+endobj
+11 0 obj
+<< /Length 1776 >>
+stream
+BT
+/F1 9.965 Tf 1 0 0 1 143.73 556.69 Tm (Soort  Start-Eind) Tj
+/F1 9.965 Tf 1 0 0 1 30.35 556.69 Tm (Dag) Tj
+/F1 9.965 Tf 1 0 0 1 257.12 556.69 Tm (  Tijdstippen) Tj
+/F1 9.965 Tf 1 0 0 1 87.04 556.69 Tm (Datum) Tj
+/F1 9.965 Tf 1 0 0 1 333.65 556.69 Tm (  Noodhulp) Tj
+/F1 9.965 Tf 1 0 0 1 333.65 545.23 Tm (dienst) Tj
+/F1 9.965 Tf 1 0 0 1 384.68 556.69 Tm (Project) Tj
+/F1 9.965 Tf 1 0 0 1 506.57 556.69 Tm (  Activiteit) Tj
+/F1 9.965 Tf 1 0 0 1 657.46 556.69 Tm (  Resultaat) Tj
+/F1 9.965 Tf 1 0 0 1 657.46 545.23 Tm (gebied) Tj
+/F1 9.965 Tf 1 0 0 1 708.49 556.86 Tm (IBT ) Tj
+/F1 9.965 Tf 1 0 0 1 708.49 545.40 Tm (snelcode) Tj
+/F1 9.965 Tf 1 0 0 1 759.51 556.69 Tm (Locatie) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 522.06 Tm (12:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 522.06 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 510.06 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F2 8.968 Tf 1 0 0 1 87.04 498.06 Tm (10/06/2027) Tj
+/F2 8.968 Tf 1 0 0 1 30.35 498.06 Tm (Donderdag) Tj
+/F2 8.968 Tf 1 0 0 1 143.73 498.06 Tm (  DIENST 07:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 498.06 Tm (  07:00-11:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 498.06 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 486.06 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 474.06 Tm (11:30-12:00) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 474.06 Tm (  Pauze \(onbetaald\)) Tj
+/F1 8.968 Tf 1 0 0 1 257.12 460.56 Tm (12:00-16:30) Tj
+/F1 8.968 Tf 1 0 0 1 506.57 460.56 Tm (  Administratief afhandelen) Tj
+/F1 8.968 Tf 1 0 0 1 30.35 448.56 Tm (Memo: Activiteit: Bureaudienst Despatcher) Tj
+/F1 9.965 Tf 1 0 0 1 72.00 35.12 Tm (Afgedrukt op 30/04/2027 17:38 door 12345678  Rapport   BVCM 3.2.4.5\\1) Tj
+/F1 9.965 Tf 1 0 0 1 441.37 35.12 Tm (  Pagina 4 van 4) Tj
+ET
+endstream
+endobj
+12 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842.25 595.50] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 11 0 R >>
+endobj
+xref
+0 13
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000135 00000 n 
+0000000232 00000 n 
+0000000334 00000 n 
+0000005757 00000 n 
+0000005899 00000 n 
+0000012493 00000 n 
+0000012635 00000 n 
+0000018993 00000 n 
+0000019136 00000 n 
+0000020965 00000 n 
+trailer
+<< /Size 13 /Root 1 0 R >>
+startxref
+21109
+%%EOF

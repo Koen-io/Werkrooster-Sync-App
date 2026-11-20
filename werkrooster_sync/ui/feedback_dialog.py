@@ -4,10 +4,13 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDialog,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QPlainTextEdit,
     QPushButton,
     QStackedWidget,
     QTextEdit,
@@ -19,6 +22,7 @@ from ..core.feedback import FeedbackError, send_feedback
 from ..core.updater import current_version
 from ..resources import asset_path
 from . import theme
+from .widgets import Vinkrondje, knop, label
 
 
 class _SendWorker(QThread):
@@ -43,12 +47,17 @@ class _SendWorker(QThread):
 class FeedbackDialog(QDialog):
     """Name (required) + email (optional) + message, sent to the developer."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, rooster: str = ""):
         super().__init__(parent)
         self._worker: _SendWorker | None = None
+        #: Het rooster dat nu in de app staat; voorstel voor het voorbeeldrooster.
+        self._rooster = rooster
+        #: Tekst die meegaat; precies wat de gebruiker heeft gezien.
+        self._voorbeeld = ""
+        self._logboek = ""
         self.setWindowTitle("Feedback & Vragen")
         self.setModal(True)
-        self.setFixedWidth(520)
+        self.setFixedWidth(640)
         self.setStyleSheet(
             theme.QSS
             + f"""
@@ -131,6 +140,32 @@ class FeedbackDialog(QDialog):
         self.message_edit.setMinimumHeight(130)
         self._layout.addWidget(self.message_edit)
 
+        self.log_check = QCheckBox(
+            "Logboek meesturen (wat de app deed en welke fouten er waren; "
+            "geen roosterinhoud)"
+        )
+        self.log_check.toggled.connect(self._toon_logboek)
+        self._layout.addWidget(self.log_check)
+        self.log_tekst = QPlainTextEdit()
+        self.log_tekst.setReadOnly(True)
+        self.log_tekst.setFixedHeight(150)
+        self.log_tekst.setVisible(False)
+        self._layout.addWidget(self.log_tekst)
+
+        voorbeeld_rij = QHBoxLayout()
+        self.voorbeeld_btn = knop("Stuur voorbeeldrooster zonder persoonsgegevens", "",
+                                  self._kies_voorbeeld)
+        self.voorbeeld_btn.setToolTip(
+            "Leest jouw rooster niet goed? Stuur dan alleen de opbouw mee: datums, codes en "
+            "tijden. Namen, nummers en vrije tekst gaan er eerst uit. Je ziet de tekst "
+            "voordat hij meegaat.")
+        voorbeeld_rij.addWidget(self.voorbeeld_btn)
+        voorbeeld_rij.addStretch()
+        self._layout.addLayout(voorbeeld_rij)
+        self.voorbeeld_lbl = label("", "statusOk", wrap=True)
+        self.voorbeeld_lbl.setVisible(False)
+        self._layout.addWidget(self.voorbeeld_lbl)
+
         self.status = QLabel("")
         self.status.setObjectName("statusDim")
         self.status.setWordWrap(True)
@@ -159,9 +194,7 @@ class FeedbackDialog(QDialog):
         box.setAlignment(Qt.AlignmentFlag.AlignCenter)
         box.setSpacing(14)
 
-        check = QLabel("✓")
-        check.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        check.setStyleSheet(f"font-size: 52px; font-weight: 800; color: {theme.OK};")
+        check = Vinkrondje(72)
         title = QLabel("Bedankt voor je bericht!")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet(f"font-size: 20px; font-weight: 700; color: {theme.TEXT};")
@@ -171,7 +204,7 @@ class FeedbackDialog(QDialog):
         sub.setStyleSheet(f"font-size: 14px; color: {theme.TEXT_DIM};")
 
         box.addStretch()
-        box.addWidget(check)
+        box.addWidget(check, alignment=Qt.AlignmentFlag.AlignCenter)
         box.addWidget(title)
         box.addWidget(sub)
         box.addSpacing(8)
@@ -207,6 +240,10 @@ class FeedbackDialog(QDialog):
         self.status.setText("Versturen…")
         self.status.style().polish(self.status)
 
+        if self.log_check.isChecked():
+            message += "\n\n--- Logboek ---\n" + (self._logboek or "(leeg)")
+        if self._voorbeeld:
+            message += "\n\n--- Voorbeeldrooster ---\n" + self._voorbeeld
         self._worker = _SendWorker(name, message, self.email_edit.text().strip(), self)
         self._worker.done.connect(self._show_success)
         self._worker.failed.connect(self._error_after_send)
@@ -223,5 +260,68 @@ class FeedbackDialog(QDialog):
         self._error(message)
 
     # ------------------------------------------------------------------
+    def _toon_logboek(self, aan: bool) -> None:
+        """Laat precies zien wat er van het logboek meegaat."""
+        if aan:
+            from ..core import logbook
+
+            self._logboek = logbook.tail()
+            self.log_tekst.setPlainText(self._logboek or "(het logboek is leeg)")
+        self.log_tekst.setVisible(aan)
+        self.adjustSize()
+
+    def _kies_voorbeeld(self) -> None:
+        if self._voorbeeld:  # tweede klik: niet meer meesturen
+            self._voorbeeld = ""
+            self.voorbeeld_lbl.setVisible(False)
+            self.voorbeeld_btn.setText("Stuur voorbeeldrooster zonder persoonsgegevens")
+            return
+        pad = self._rooster or self._kies_pad()
+        if not pad:
+            return
+        from ..core.voorbeeld import voorbeeld_uit_pdf
+
+        try:
+            tekst = voorbeeld_uit_pdf(pad)
+        except Exception as exc:  # kapotte of andere pdf
+            self._error(f"Van dit bestand kon geen voorbeeld worden gemaakt ({exc}).")
+            return
+        if self._bevestig_voorbeeld(tekst):
+            self._voorbeeld = tekst
+            self.voorbeeld_lbl.setText(
+                f"Het voorbeeldrooster gaat mee ({len(tekst.splitlines())} regels, "
+                "zonder namen, nummers en vrije tekst).")
+            self.voorbeeld_lbl.setVisible(True)
+            self.voorbeeld_btn.setText("Voorbeeldrooster toch niet meesturen")
+
+    def _kies_pad(self) -> str:
+        pad, _ = QFileDialog.getOpenFileName(self, "Kies je rooster", "", "Roosters (*.pdf)")
+        return pad
+
+    def _bevestig_voorbeeld(self, tekst: str) -> bool:
+        """Toon de volledige tekst die meegaat; alleen na "ja" gaat hij mee."""
+        d = QDialog(self)
+        d.setWindowTitle("Dit gaat er mee")
+        d.setStyleSheet(self.styleSheet())
+        d.resize(760, 600)
+        lay = QVBoxLayout(d)
+        lay.setContentsMargins(24, 22, 24, 22)
+        lay.setSpacing(12)
+        lay.addWidget(label("Dit gaat er mee", "appTitle"))
+        lay.addWidget(label(
+            "Alleen de opbouw van je rooster: datums, codes, tijden en waar de tekst op de "
+            "bladzijde staat. Namen, nummers en vrije tekst zijn vervangen door x en 0. "
+            "Lees het gerust na; er gaat niets anders mee.", "statusDim", wrap=True))
+        vak = QPlainTextEdit(tekst)
+        vak.setReadOnly(True)
+        vak.setObjectName("voorbeeldTekst")
+        lay.addWidget(vak, stretch=1)
+        rij = QHBoxLayout()
+        rij.addStretch()
+        rij.addWidget(knop("Annuleren", "secondary", d.reject))
+        rij.addWidget(knop("Ja, stuur dit mee", "primary", d.accept))
+        lay.addLayout(rij)
+        return d.exec() == QDialog.DialogCode.Accepted
+
     def _show_success(self) -> None:
         self._stack.setCurrentIndex(1)

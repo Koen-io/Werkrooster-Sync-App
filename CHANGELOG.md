@@ -1,5 +1,18 @@
 # Wijzigingen
 
+## v2.0.0
+- Nieuw rooster over een oud rooster heen? De app werkt je agenda nu per dag bij: gewijzigde diensten worden aangepast, vervallen diensten gaan eruit. Je eigen afspraken blijven altijd staan.
+- Voordat er iets verandert zie je per dag wat er gebeurt. Gaat er een dienst uit je agenda, dan vraagt de app eerst of dat mag.
+- Met “Ongedaan maken” zet je de laatste ronde terug, ook als de app halverwege werd afgesloten.
+- Een instelhulp bij de eerste start: agenda kiezen, personeelsnummer en je diensttijden.
+- Diensttijden zelf in te stellen: eigen soorten diensten met een naam, begintijd, kleur en herinnering.
+- Kent de app een code in je rooster niet, dan vraagt hij wat het is en onthoudt hij het antwoord.
+- Rooster ziet er bij jouw eenheid anders uit? Stuur een voorbeeldrooster mee met je vraag. Namen, nummers en notities worden eruit gehaald, en je ziet precies wat er verstuurd wordt.
+- Een logboek, zodat een probleem achteraf uit te zoeken is. Er staan geen roosterinhoud of namen in.
+- Elke dienst in een .ics-bestand houdt nu hetzelfde kenmerk. Importeer je het bestand opnieuw, dan kan je agenda de dienst herkennen in plaats van hem dubbel te zetten (dat hangt wel van de agenda af).
+- Updates worden extra gecontroleerd voordat ze worden geïnstalleerd.
+- Nieuw, rustiger uiterlijk in drie stappen: rooster kiezen, nakijken, in je agenda.
+
 ## v1.4.3
 - De app opent nu schermvullend (gemaximaliseerd), zodat alle knoppen in de titelbalk meteen zichtbaar zijn.
 

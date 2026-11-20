@@ -8,3 +8,6 @@ settings.json
 .venv/
 venv/
 .DS_Store
+# Echte roosters horen nooit in deze openbare repo
+docs/*Rooster*.pdf
+docs/*.zip

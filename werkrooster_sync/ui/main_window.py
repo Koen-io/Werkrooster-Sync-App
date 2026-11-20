@@ -1,565 +1,1153 @@
-"""Main application window."""
+"""Het hoofdvenster: rooster kiezen, controleren, klaar.
+
+Alles wat de agenda leest of schrijft gebeurt in een achtergronddraad. Tijdens
+het bijwerken kan er geen tweede actie starten: knoppen en slepen staan uit en
+de instellingen gaan niet open.
+"""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtGui import QColor
+import copy
+from datetime import date
+from pathlib import Path
+
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QComboBox,
-    QFormLayout,
+    QCheckBox,
+    QDialog,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
+    QLayout,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
     QMainWindow,
+    QMessageBox,
+    QPlainTextEdit,
     QProgressBar,
-    QPushButton,
+    QScrollArea,
     QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
-from ..calendars.base import CalendarError
+from ..calendars.ics_export import IcsExportBackend
 from ..calendars.registry import all_backends, get_backend
-from ..core.classifier import apply_classification
-from ..core.ics_parser import IcsParseError, parse_ics
-from ..core.models import Shift, ShiftType, SyncReport
+from ..core import bijwerken as bw
+from ..core.classifier import apply_classification, code_van, onbekende_codes
+from ..core.models import Shift, ShiftType
+from ..core.pdf_parser import Roster, read_roster
 from ..core.settings import Settings
-from ..core.sync import mark_already_imported, sync_shifts
 from . import theme
 from .settings_dialog import SettingsPanel, _Worker
-from .widgets import CountChip, DropZone, StepHeader
+from .widgets import (
+    DropZone,
+    Icoon,
+    KeuzeKaart,
+    Pil,
+    StepBar,
+    Stip,
+    Tegel,
+    Vinkrondje,
+    dag_kort,
+    dag_lang,
+    herpolish,
+    kaart,
+    knop,
+    label,
+    leeg_layout,
+    periode_tekst,
+    tijden,
+)
 
-WEEKDAYS = ["ma", "di", "wo", "do", "vr", "za", "zo"]
+KOPPELING_NAAM = {"apple_calendar": "Apple Agenda", "outlook": "Outlook",
+                  "ics_export": "Een andere agenda"}
+
+#: Woord op de tegel en label in de lijst, per uitkomst.
+TEGEL = {bw.NIEUW: "nieuw", bw.GEWIJZIGD: "gewijzigd", bw.VERVANGT_CONCEPT: "vervangt concept",
+         bw.STAAT_ER_AL: "staat er al", bw.VERWIJDEREN: "wordt verwijderd",
+         bw.OVERGESLAGEN: "overgeslagen"}
+
+#: Volgorde van de tegels.
+TEGEL_VOLGORDE = [bw.NIEUW, bw.GEWIJZIGD, bw.VERVANGT_CONCEPT, bw.STAAT_ER_AL,
+                  bw.VERWIJDEREN, "kiezen", "laten", bw.OVERGESLAGEN]
 
 
-class _SyncWorker(QThread):
-    progress = Signal(int, int, str)
-    finished_report = Signal(object)
-    failed = Signal(str)
+def _pil(uitkomst: str) -> Pil:
+    if uitkomst == bw.NIEUW:
+        return Pil("+ Nieuw", theme.ACCENT, theme.ACCENT_TEXT)
+    if uitkomst == bw.GEWIJZIGD:
+        return Pil("Gewijzigd", theme.OCHTEND, theme.ACCENT_TEXT)
+    if uitkomst == bw.VERVANGT_CONCEPT:
+        return Pil("Vervangt concept", theme.BORDER, theme.TEXT)
+    if uitkomst == bw.STAAT_ER_AL:
+        return Pil("Staat er al", "", theme.TEXT_DIM)
+    if uitkomst == bw.VERWIJDEREN:
+        return Pil("Wordt verwijderd", "", theme.DANGER, theme.DANGER)
+    if uitkomst == "laten":
+        return Pil("Blijft staan", "", theme.TEXT_DIM, theme.BORDER)
+    if uitkomst == "bestand":
+        return Pil("Komt in bestand", "", theme.TEXT_DIM)
+    if uitkomst in (bw.ZELF_AANGEPAST, bw.MOGELIJK_DUBBEL, bw.OUDER_ROOSTER, bw.ANDERE_INHOUD):
+        return Pil(uitkomst[0].upper() + uitkomst[1:], "", theme.WARN, theme.WARN)
+    return Pil("Overgeslagen", "", theme.TEXT_DIM, theme.BORDER)
 
-    def __init__(self, shifts: list[Shift], settings: Settings, parent=None):
+
+def _overlapt(a: Roster, b: Roster) -> bool:
+    if not a.periode or not b.periode:
+        return True
+    return a.periode[0] <= b.periode[1] and b.periode[0] <= a.periode[1]
+
+
+def _dag_van(x: Shift) -> date:
+    return x.roster_date or x.start.date()
+
+
+# ----------------------------------------------------------------------
+class OnbekendeCode(QWidget):
+    """Eén keer vragen wat een onbekende code uit het rooster is."""
+
+    def __init__(self, code: str, voorbeelden: list[Shift], settings: Settings, klaar,
+                 parent=None):
         super().__init__(parent)
-        self._shifts = shifts
-        self._settings = settings
+        self.code = code
+        root = QVBoxLayout(self)
+        root.setContentsMargins(56, 40, 56, 32)
+        root.setSpacing(14)
+        boven = QLabel("Eén ding weten we nog niet")
+        boven.setStyleSheet(f"color: {theme.WARN}; font-size: 16px; font-weight: 700;")
+        root.addWidget(boven)
+        root.addWidget(label(f"Wat is “{code}”?", "pageTitle"))
+        x = voorbeelden[0]
+        waar = (f"op {dag_lang(_dag_van(x))}" +
+                (f" (en nog {len(voorbeelden) - 1} andere dag{'en' if len(voorbeelden) > 2 else ''})"
+                 if len(voorbeelden) > 1 else ""))
+        wanneer = "de hele dag" if x.all_day else f"van {x.start:%H:%M} tot {x.end:%H:%M}"
+        uitleg = label(f"Deze soort staat {waar} in je rooster, {wanneer}. De app kent hem "
+                       "nog niet. Kies één keer wat het is; daarna weet de app het voortaan.",
+                       "lead", wrap=True)
+        uitleg.setMaximumWidth(960)
+        root.addWidget(uitleg)
+        root.addSpacing(10)
 
-    def run(self):
-        try:
-            backend = get_backend(self._settings.backend_id)
-            report = sync_shifts(
-                self._shifts,
-                backend,
-                self._settings,
-                progress=lambda i, n, msg: self.progress.emit(i, n, msg),
-            )
-            self.finished_report.emit(report)
-        except CalendarError as exc:
-            self.failed.emit(str(exc))
-        except Exception as exc:  # pragma: no cover - defensive
-            self.failed.emit(f"Onverwachte fout: {exc}")
+        dienst = settings.name_for(ShiftType.DIENST.value)
+        keuzes = [
+            ("Een gewone dienst", f"Komt als “{dienst}” in je agenda.",
+             theme.ACCENT, ShiftType.DIENST.value),
+            ("Vrij of verlof", "Komt als “Vrij” bovenaan de dag te staan.",
+             theme.VRIJ, ShiftType.VRIJ.value),
+            ("Iets anders", "Zoals een cursus of piket. Houdt zijn eigen naam uit het rooster.",
+             theme.AFSPRAAK, ShiftType.AFSPRAAK.value),
+            ("Niet in mijn agenda", "De app slaat deze soort voortaan over.",
+             "", ShiftType.NEGEREN.value),
+        ]
+        rooster = QGridLayout()
+        rooster.setSpacing(20)
+        self.kaarten: dict[str, KeuzeKaart] = {}
+        for i, (titel, tekst, kleur, sleutel) in enumerate(keuzes):
+            k = KeuzeKaart(titel, tekst, stip=kleur)
+            k.setMinimumHeight(150)
+            k.clicked.connect(lambda sleutel=sleutel: klaar(code, sleutel, self.onthoud.isChecked()))
+            self.kaarten[sleutel] = k
+            rooster.addWidget(k, i // 2, i % 2)
+        root.addLayout(rooster, stretch=1)
+        onder = QHBoxLayout()
+        self.onthoud = QCheckBox("Onthoud mijn keuze voor volgende roosters")
+        self.onthoud.setChecked(True)
+        self.onthoud.setStyleSheet("font-size: 16px;")
+        onder.addWidget(self.onthoud)
+        onder.addStretch()
+        onder.addWidget(knop("Nu overslaan", "big", lambda: klaar(code, "", False)))
+        root.addLayout(onder)
 
 
+# ----------------------------------------------------------------------
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.settings = Settings.load()
-        self.shifts: list[Shift] = []
-        self._worker: _SyncWorker | None = None
+        self.roosters: list[Roster] = []
+        self._ruw: dict[int, list[Shift]] = {}
+        self.paden: list[str] = []
+        self.plannen: list[bw.Plan] = []
+        self.keuzes = bw.Keuzes()
+        self._laten: set[date] = set()
+        self._nee: set[str] = set()
+        self._gevraagd: set[str] = set()
+        self._eenmalig: dict[str, str] = {}
+        self._worker: _Worker | None = None
+        self._bezig = False
+        self.uitkomst: bw.Uitkomst | None = None
 
         self.setWindowTitle("Werkrooster Sync")
-        self.setMinimumSize(680, 720)
+        self.setMinimumSize(1000, 720)
         self.setStyleSheet(theme.QSS)
 
-        # Stacked pages: 0 = main view, 1 = the in-app settings panel.
         self._stack = QStackedWidget()
         self.setCentralWidget(self._stack)
-        main_page = QWidget()
-        self._stack.addWidget(main_page)
-        root = QVBoxLayout(main_page)
-        root.setContentsMargins(28, 24, 28, 24)
-        root.setSpacing(18)
+        hoofd = QWidget()
+        self._stack.addWidget(hoofd)
+        root = QVBoxLayout(hoofd)
+        root.setContentsMargins(56, 30, 56, 30)
+        root.setSpacing(22)
 
-        # Header ------------------------------------------------------
-        header = QHBoxLayout()
-        title_box = QVBoxLayout()
-        title_box.setSpacing(2)
-        title = QLabel("Werkrooster Sync")
-        title.setObjectName("appTitle")
-        subtitle = QLabel("Zet je rooster in drie stappen in je agenda")
-        subtitle.setObjectName("appSubtitle")
-        title_box.addWidget(title)
-        title_box.addWidget(subtitle)
-        header.addLayout(title_box)
-        header.addStretch()
+        kop = QHBoxLayout()
+        kop.setSpacing(12)
+        kop.addWidget(label("Werkrooster Sync", "appTitle"))
+        kop.addStretch()
+        self.handleiding_btn = knop("Handleiding", "secondary", self.open_handleiding)
+        self.feedback_btn = knop("Feedback", "secondary", self.open_feedback)
+        self.settings_btn = knop("Instellingen", "secondary", self.open_settings)
+        for b in (self.handleiding_btn, self.feedback_btn, self.settings_btn):
+            kop.addWidget(b)
+        root.addLayout(kop)
+        self.stappen = StepBar()
+        root.addWidget(self.stappen)
 
-        handleiding_btn = QPushButton("📖  Handleiding")
-        handleiding_btn.setObjectName("secondary")
-        handleiding_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        handleiding_btn.clicked.connect(self.open_handleiding)
+        self.pagina = QStackedWidget()
+        self.pagina.addWidget(self._bouw_kiezen())
+        self.pagina.addWidget(self._bouw_controle())
+        self.pagina.addWidget(self._bouw_klaar())
+        root.addWidget(self.pagina, stretch=1)
+        self._ververs_agendabalk()
 
-        feedback_btn = QPushButton("✉  Feedback && Vragen")
-        feedback_btn.setObjectName("secondary")
-        feedback_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        feedback_btn.clicked.connect(self.open_feedback)
+        if not self.settings.calendar_name and self.settings.backend_id != IcsExportBackend.id:
+            self.open_instelhulp()
 
-        self.header_update_btn = QPushButton("↻  Zoek naar updates")
-        self.header_update_btn.setObjectName("secondary")
-        self.header_update_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.header_update_btn.clicked.connect(self.check_for_updates)
+    # ------------------------------------------------------------------
+    def _koppeling(self):
+        return get_backend(self.settings.backend_id)
 
-        settings_btn = QPushButton("⚙  Instellingen")
-        settings_btn.setObjectName("secondary")
-        settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        settings_btn.clicked.connect(self.open_settings)
+    def _indeel_instellingen(self) -> Settings:
+        """De instellingen plus codes die alleen voor deze keer zijn gekozen."""
+        if not self._eenmalig:
+            return self.settings
+        s = Settings.from_dict(self.settings.to_dict())
+        for code, sleutel in self._eenmalig.items():
+            s.onthoud_code(code, sleutel)
+        return s
 
-        for btn in (handleiding_btn, feedback_btn, self.header_update_btn, settings_btn):
-            header.addWidget(btn, alignment=Qt.AlignmentFlag.AlignTop)
-        root.addLayout(header)
+    def _zet_bezig(self, aan: bool) -> None:
+        """Tijdens agenda-werk: geen tweede actie."""
+        self._bezig = aan
+        self.settings_btn.setEnabled(not aan)
+        self.drop_zone.set_actief(not aan)
+        self.andere_btn.setEnabled(not aan)
+        self.ander_bestand_btn.setEnabled(not aan)
+        self.nog_een_btn.setEnabled(not aan)
+        self.ongedaan_btn.setEnabled(not aan)
+        self.veranderd_btn.setEnabled(not aan)
+        self.voortgang.setVisible(aan)
+        self.voortgang_lbl.setVisible(aan)
+        if aan:
+            self.zet_btn.setEnabled(False)
 
-        # Stap 1: agenda kiezen --------------------------------------
-        root.addWidget(StepHeader(1, "Kies je agenda"))
-        step1 = QFrame()
-        step1.setObjectName("card")
-        s1 = QFormLayout(step1)
-        s1.setContentsMargins(18, 14, 18, 14)
-        s1.setSpacing(10)
-        s1.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+    def closeEvent(self, event):  # noqa: N802 (Qt API)
+        if self._bezig:
+            QMessageBox.information(self, "Even wachten",
+                                    "De app is bezig met je agenda. Wacht tot hij klaar is, "
+                                    "dan kun je de app sluiten.")
+            event.ignore()
+            return
+        super().closeEvent(event)
 
-        self.backend_combo = QComboBox()
-        self._backends = all_backends()
-        for b in self._backends:
-            self.backend_combo.addItem(b.label, b.id)
-        idx = self.backend_combo.findData(
-            self.settings.backend_id or self._backends[0].id
-        )
-        if idx >= 0:
-            self.backend_combo.setCurrentIndex(idx)
+    def _start(self, fn, klaar, met_voortgang: bool = False) -> None:
+        self._zet_bezig(True)
+        self._worker = _Worker(fn, self, met_voortgang=met_voortgang)
 
-        self.calendar_combo = QComboBox()
-        if self.settings.calendar_name:
-            self.calendar_combo.addItem(self.settings.calendar_name)
-        refresh_btn = QPushButton("Ververs")
-        refresh_btn.clicked.connect(self._load_calendars)
-        for combo in (self.backend_combo, self.calendar_combo):
-            combo.setSizePolicy(
-                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
-            )
-        cal_row = QHBoxLayout()
-        cal_row.addWidget(self.calendar_combo, stretch=1)
-        cal_row.addWidget(refresh_btn)
+        def done(uit) -> None:
+            self._zet_bezig(False)
+            klaar(uit)
 
-        s1.addRow("Agenda-app:", self.backend_combo)
-        s1.addRow("Agenda:", cal_row)
-        self.agenda_status = QLabel("")
-        self.agenda_status.setObjectName("statusDim")
-        self.agenda_status.setWordWrap(True)
-        s1.addRow("", self.agenda_status)
-        root.addWidget(step1)
+        def failed(melding: str) -> None:
+            self._zet_bezig(False)
+            self._fout(melding)
 
-        self._loading_calendars = False
-        self.backend_combo.currentIndexChanged.connect(self._on_backend_changed)
-        self.calendar_combo.currentIndexChanged.connect(self._on_calendar_changed)
+        self._worker.done.connect(done)
+        self._worker.failed.connect(failed)
+        self._worker.voortgang.connect(self._op_voortgang)
+        self._worker.start()
 
-        # Stap 2: rooster kiezen -------------------------------------
-        root.addWidget(StepHeader(2, "Sleep je rooster hierheen"))
+    def _op_voortgang(self, gedaan: int, totaal: int, _tekst: str) -> None:
+        self.voortgang.setRange(0, max(1, totaal))
+        self.voortgang.setValue(gedaan)
+        self.voortgang_lbl.setText(f"Bezig met je agenda: {gedaan} van {totaal}")
+
+    def _fout(self, melding: str) -> None:
+        """Een fout bij agenda-werk: op het scherm waar je bent."""
+        if self.pagina.currentIndex() == 1:
+            self.status.setText(melding)
+            self.status.setVisible(True)
+            herpolish(self.status, "statusError")
+            self._ververs_knop()
+        else:
+            self.pagina.setCurrentIndex(0)
+            self.stappen.zet(0)
+            self.drop_zone.toon_fout(melding)
+
+    # ------------------------------------------------------------------
+    # Stap 1: rooster kiezen
+    # ------------------------------------------------------------------
+    def _bouw_kiezen(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(24)
         self.drop_zone = DropZone()
-        self.drop_zone.file_selected.connect(self.load_file)
-        root.addWidget(self.drop_zone)
+        self.drop_zone.files_selected.connect(self.load_files)
+        self.drop_zone.hulp_btn.clicked.connect(self.open_handleiding)
+        lay.addWidget(self.drop_zone, stretch=1)
 
-        # Summary chips ----------------------------------------------
-        self.chips_row = QHBoxLayout()
-        self.chips_row.setSpacing(6)
-        chips_holder = QWidget()
-        chips_holder.setLayout(self.chips_row)
-        root.addWidget(chips_holder)
+        balk = QFrame()
+        balk.setObjectName("card")
+        b = QHBoxLayout(balk)
+        b.setContentsMargins(22, 14, 16, 14)
+        b.setSpacing(14)
+        b.addWidget(Icoon("agenda", 26, theme.TEXT_DIM))
+        self.agenda_lbl = QLabel()
+        self.agenda_lbl.setTextFormat(Qt.TextFormat.RichText)
+        self.agenda_lbl.setStyleSheet(f"font-size: 16px; color: {theme.TEXT_DIM};")
+        b.addWidget(self.agenda_lbl, stretch=1)
+        self.andere_btn = knop("Andere agenda", "secondary", self.open_agenda_kiezen)
+        b.addWidget(self.andere_btn)
+        lay.addWidget(balk)
+        return w
 
-        # Preview list ------------------------------------------------
-        self.preview = QListWidget()
-        self.preview.setVisible(False)
-        self.preview.setMinimumHeight(160)
-        root.addWidget(self.preview, stretch=1)
+    def _ververs_agendabalk(self) -> None:
+        import html
 
-        # Stap 3: synchroniseren -------------------------------------
-        root.addWidget(StepHeader(3, "Synchroniseer"))
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setVisible(False)
-        self.progress_bar.setTextVisible(False)
-        root.addWidget(self.progress_bar)
+        s = self.settings
+        b = self._koppeling()
+        if not b.can_inspect_calendar:
+            tekst = "Je krijgt een bestand om zelf in je agenda in te lezen"
+        elif s.calendar_name:
+            tekst = (f"Komt in je agenda <b style='color:{theme.TEXT}'>"
+                     f"{html.escape(s.calendar_name)}</b>")
+        else:
+            tekst = "Er is nog geen agenda gekozen"
+        naam = KOPPELING_NAAM.get(b.id, b.label)
+        self.agenda_lbl.setText(f"{tekst} · {html.escape(naam)}")
 
-        self.status = QLabel("Nog geen rooster geladen.")
-        self.status.setObjectName("statusDim")
-        self.status.setWordWrap(True)
-        root.addWidget(self.status)
-
-        bottom_row = QHBoxLayout()
-        bottom_row.setSpacing(10)
-        self.sync_btn = QPushButton("Synchroniseer naar agenda")
-        self.sync_btn.setObjectName("primary")
-        self.sync_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.sync_btn.setEnabled(False)
-        self.sync_btn.clicked.connect(self.start_sync)
-        bottom_row.addWidget(self.sync_btn, stretch=1)
-
-        self.reset_btn = QPushButton("↺  Opnieuw")
-        self.reset_btn.setObjectName("secondary")
-        self.reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.reset_btn.setToolTip(
-            "Wis het geladen rooster en begin opnieuw (instellingen blijven staan)."
-        )
-        self.reset_btn.setEnabled(False)
-        self.reset_btn.clicked.connect(self.reset_file)
-        bottom_row.addWidget(self.reset_btn)
-        root.addLayout(bottom_row)
-
-        self._load_calendars()
-
-    # ------------------------------------------------------------------
-    # Stap 1: agenda selection (auto-saved on every change)
-    # ------------------------------------------------------------------
-    def _on_backend_changed(self) -> None:
-        self.settings.backend_id = self.backend_combo.currentData() or ""
-        self.settings.save()
-        self._load_calendars()
-
-    def _on_calendar_changed(self) -> None:
-        if self._loading_calendars:
-            return
-        self.settings.calendar_name = self.calendar_combo.currentText()
-        self.settings.save()
-        if self.shifts:
-            self._auto_check_duplicates()
-
-    def _load_calendars(self) -> None:
-        backend = get_backend(self.backend_combo.currentData())
-        if not backend.can_inspect_calendar:
-            self.agenda_status.setObjectName("statusWarn")
-            self.agenda_status.setText(
-                "⚠  In .ics export-modus kan de app je agenda niet inzien; je "
-                "agenda-app controleert zelf op dubbele items bij het importeren."
-            )
-            self.agenda_status.style().polish(self.agenda_status)
-
-        current = self.calendar_combo.currentText() or self.settings.calendar_name
-        self._cal_worker = _Worker(backend.list_calendars, self)
-
-        def on_done(names: list) -> None:
-            self._loading_calendars = True
-            self.calendar_combo.clear()
-            self.calendar_combo.addItems(names)
-            self._loading_calendars = False
-            if current in names:
-                self.calendar_combo.setCurrentText(current)
-            else:
-                self._on_calendar_changed()
-            if backend.can_inspect_calendar:
-                self.agenda_status.setObjectName("statusDim")
-                self.agenda_status.setText(f"{len(names)} agenda('s) gevonden.")
-                self.agenda_status.style().polish(self.agenda_status)
-
-        def on_fail(msg: str) -> None:
-            if backend.can_inspect_calendar:
-                self.agenda_status.setObjectName("statusError")
-                self.agenda_status.setText(msg)
-                self.agenda_status.style().polish(self.agenda_status)
-
-        self._cal_worker.done.connect(on_done)
-        self._cal_worker.failed.connect(on_fail)
-        self._cal_worker.start()
-
-    # ------------------------------------------------------------------
-    def _set_status(self, text: str, kind: str = "statusDim") -> None:
-        self.status.setObjectName(kind)
-        self.status.setText(text)
-        self.status.style().polish(self.status)
-
-    # ------------------------------------------------------------------
     def load_file(self, path: str) -> None:
-        try:
-            if path.lower().endswith(".pdf"):
-                from ..core.pdf_parser import parse_pdf
+        self.load_files([path])
 
-                shifts = parse_pdf(path, self.settings)
-            else:
-                shifts = parse_ics(path)
-        except IcsParseError as exc:
-            self._set_status(str(exc), "statusError")
+    def load_files(self, paden: list[str]) -> None:
+        """Lees een of meer roosters in en ga door naar controleren."""
+        if self._bezig:
             return
-        self.shifts = apply_classification(shifts, self.settings)
-        self._refresh_preview()
-        self.sync_btn.setEnabled(True)
-        self.reset_btn.setEnabled(True)
-        first = min(s.start for s in self.shifts)
-        last = max(s.start for s in self.shifts)
-        ignored = sum(1 for s in self.shifts if s.shift_type == ShiftType.NEGEREN)
-        note = f", waarvan {ignored} roosterruis (grijs, wordt overgeslagen)" if ignored else ""
-        self._set_status(
-            f"{len(self.shifts)} items geladen "
-            f"({first:%d-%m-%Y} t/m {last:%d-%m-%Y}){note}. "
-            f"Klaar om te synchroniseren.",
-            "statusOk",
-        )
-        self._auto_check_duplicates()
+        self.drop_zone.toon_fout("")
+        roosters = []
+        for pad in paden:
+            if not pad.lower().endswith(".pdf"):
+                self.drop_zone.toon_fout(f"“{Path(pad).name}” is geen pdf. Kies het "
+                                         "pdf-bestand “Medewerker Rooster” uit BVCM.")
+                return
+            try:
+                roosters.append(read_roster(pad, self.settings))
+            except Exception as exc:  # PdfParseError en kapotte bestanden
+                self.drop_zone.toon_fout(f"“{Path(pad).name}” kon niet worden gelezen. {exc}")
+                return
+        self.paden = list(paden)
+        self.roosters = bw.op_rangvolgorde(roosters)
+        self._ruw = {id(r): copy.deepcopy(r.shifts) for r in self.roosters}
+        self.keuzes = bw.Keuzes()
+        self._laten = set()
+        self._nee = set()
+        self._deel_in()
+        self._vraag_of_ga_door()
+
+    def _deel_in(self) -> None:
+        s = self._indeel_instellingen()
+        for r in self.roosters:
+            r.shifts = apply_classification(copy.deepcopy(self._ruw[id(r)]), s)
+
+    def _alle_shifts(self) -> list[Shift]:
+        return [x for r in self.roosters for x in r.shifts]
+
+    def _vraag_of_ga_door(self) -> None:
+        codes = [c for c in onbekende_codes(self._alle_shifts()) if c not in self._gevraagd]
+        if codes:
+            self._vraag_code(codes[0])
+            return
+        self._naar_controle()
+
+    def _vraag_code(self, code: str) -> None:
+        voorbeelden = [x for x in self._alle_shifts() if x.onbekend and code_van(x) == code]
+        pagina = OnbekendeCode(code, voorbeelden, self.settings, self._code_gekozen)
+        self._toon_extra(pagina)
+
+    def _code_gekozen(self, code: str, sleutel: str, onthoud: bool) -> None:
+        self._gevraagd.add(code)
+        if sleutel and onthoud:
+            self.settings.onthoud_code(code, sleutel)
+            self.settings.save()
+        elif sleutel:
+            self._eenmalig[code] = sleutel
+        self._sluit_extra()
+        self._deel_in()
+        self._vraag_of_ga_door()
+
+    def _toon_extra(self, w: QWidget) -> None:
+        """Een volledige pagina over het hoofdscherm (instellingen, instelhulp, vraag)."""
+        self._sluit_extra()
+        self._extra = w
+        self._stack.addWidget(w)
+        self._stack.setCurrentWidget(w)
+
+    def _sluit_extra(self) -> None:
+        w = getattr(self, "_extra", None)
+        if w is not None:
+            self._stack.removeWidget(w)
+            w.deleteLater()
+            self._extra = None
+        self._stack.setCurrentIndex(0)
+
+    # ------------------------------------------------------------------
+    # Stap 2: controleren
+    # ------------------------------------------------------------------
+    def _bouw_controle(self) -> QWidget:
+        w = QWidget()
+        lay = QHBoxLayout(w)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(40)
+
+        links = QVBoxLayout()
+        links.setSpacing(14)
+        self.titel = label("Klopt dit met je rooster?", "bigTitle")
+        links.addWidget(self.titel)
+        self.ondertitel = label("", "lead", wrap=True)
+        links.addWidget(self.ondertitel)
+        links.addSpacing(6)
+        # Meldingen (verwijderen bevestigen, alleen toevoegen) boven de tegels,
+        # zodat het vinkje nooit onder de knoppen wegvalt.
+        self.meldingen_links = QVBoxLayout()
+        self.meldingen_links.setSpacing(12)
+        links.addLayout(self.meldingen_links)
+        self.tegels = QGridLayout()
+        self.tegels.setSpacing(16)
+        links.addLayout(self.tegels)
+        links.addStretch()
+        links.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+        boven = QWidget()
+        boven.setLayout(links)
+        boven_sa = QScrollArea()
+        boven_sa.setWidgetResizable(True)
+        boven_sa.setFrameShape(QFrame.Shape.NoFrame)
+        boven_sa.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        boven_sa.setWidget(boven)
+        links = QVBoxLayout()
+        links.setContentsMargins(0, 0, 0, 0)
+        links.setSpacing(12)
+        links.addWidget(boven_sa, stretch=1)
+        self.status = label("", "statusDim", wrap=True)
+        self.status.setVisible(False)
+        links.addWidget(self.status)
+        self.voortgang = QProgressBar()
+        self.voortgang.setVisible(False)
+        links.addWidget(self.voortgang)
+        self.voortgang_lbl = label("", "statusDim")
+        self.voortgang_lbl.setVisible(False)
+        links.addWidget(self.voortgang_lbl)
+        self.zet_btn = knop("Zet in mijn agenda", "primary", self.start_bijwerken)
+        self.zet_btn.setMinimumHeight(64)
+        links.addWidget(self.zet_btn)
+        self.ander_bestand_btn = knop("Ander bestand kiezen", "big", self.reset_file)
+        links.addWidget(self.ander_bestand_btn)
+        linkerkant = QWidget()
+        linkerkant.setLayout(links)
+        linkerkant.setFixedWidth(340)
+        lay.addWidget(linkerkant)
+
+        rechts = QFrame()
+        rechts.setObjectName("card")
+        rl = QVBoxLayout(rechts)
+        rl.setContentsMargins(6, 6, 6, 6)
+        sa = QScrollArea()
+        sa.setWidgetResizable(True)
+        sa.setFrameShape(QFrame.Shape.NoFrame)
+        inhoud = QWidget()
+        self.lijst = QVBoxLayout(inhoud)
+        self.lijst.setContentsMargins(18, 10, 18, 10)
+        self.lijst.setSpacing(0)
+        self.lijst.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+        sa.setWidget(inhoud)
+        sa.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        rl.addWidget(sa)
+        lay.addWidget(rechts, stretch=1)
+        return w
+
+    def _naar_controle(self) -> None:
+        self.plannen = []
+        self.stappen.zet(1)
+        self.pagina.setCurrentIndex(1)
+        self.status.setVisible(False)
+        r0 = self.roosters
+        soort = sorted({"Conceptrooster" if r.is_concept else "Definitief rooster" for r in r0},
+                       reverse=True)
+        perioden = [r.periode for r in r0 if r.periode]
+        if perioden:
+            eerste, laatste = min(p[0] for p in perioden), max(p[1] for p in perioden)
+        else:
+            dagen = [_dag_van(x) for x in self._alle_shifts()] or [date.today()]
+            eerste, laatste = min(dagen), max(dagen)
+        self.ondertitel.setText(" en ".join(soort) + "\n" + periode_tekst(eerste, laatste))
+        backend = self._koppeling()
+        if not backend.can_inspect_calendar:
+            self._toon_bestand_plan()
+            return
+        if not self.settings.calendar_name:
+            self._toon_leeg("Kies eerst in welke agenda je diensten moeten komen.")
+            self.status.setText("Er is nog geen agenda gekozen. Klik op “Instellingen” of "
+                                "ga terug en kies “Andere agenda”.")
+            self.status.setVisible(True)
+            herpolish(self.status, "statusError")
+            return
+        self._plan()
+
+    def _toon_leeg(self, tekst: str) -> None:
+        leeg_layout(self.lijst)
+        leeg_layout(self.tegels)
+        leeg_layout(self.meldingen_links)
+        lbl = label(tekst, "lead", wrap=True)
+        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lijst.addStretch()
+        self.lijst.addWidget(lbl)
+        self.lijst.addStretch()
+        self.zet_btn.setEnabled(False)
+
+    def _plan(self) -> None:
+        """Vergelijk de roosters met de agenda (leest alleen), in de achtergrond."""
+        backend = self._koppeling()
+        s = Settings.from_dict(self._indeel_instellingen().to_dict())
+        roosters, keuzes = list(self.roosters), self.keuzes
+        self._toon_leeg("Je agenda wordt bekeken…")
+
+        def plan():
+            naam, sleutel = bw.agenda_kiezen(backend, s.calendar_name, s.calendar_key)
+            s.calendar_name, s.calendar_key = naam, sleutel
+            beheer = bw.Beheer.laad()
+            return naam, sleutel, [bw.maak_plan(r, r.shifts, backend, s, beheer, keuzes)
+                                   for r in roosters]
+
+        def klaar(uit) -> None:
+            naam, sleutel, plannen = uit
+            if (naam, sleutel) != (self.settings.calendar_name, self.settings.calendar_key):
+                self.settings.calendar_name, self.settings.calendar_key = naam, sleutel
+                self.settings.save()
+                self._ververs_agendabalk()
+            self.plannen = plannen
+            self._toon_plan()
+
+        self._start(plan, klaar)
+
+    def _per_dag(self) -> dict[date, tuple[bw.DagPlan, bw.Plan, Roster]]:
+        """Per dag het plan van het rooster dat wint (het laatste op rang)."""
+        uit = {}
+        for r, p in zip(self.roosters, self.plannen):
+            for dp in p.dagen:
+                uit[dp.dag] = (dp, p, r)
+        return dict(sorted(uit.items()))
+
+    def _soort(self, dp: bw.DagPlan) -> str:
+        if dp.dag in self._laten:
+            return "laten"
+        if dp.keuze_nodig:
+            return "kiezen"
+        return dp.uitkomst
+
+    def _telt_mee(self, dp: bw.DagPlan, p: bw.Plan) -> bool:
+        """Gaat deze dag echt iets veranderen bij de grote knop?"""
+        if not dp.stappen or dp.keuze_nodig:
+            return False
+        return not (dp.netto_weg and not self.keuzes.verwijderen_bevestigd
+                    and not p.alleen_toevoegen)
+
+    def _toon_plan(self) -> None:
+        dagen = self._per_dag()
+        # tegels
+        leeg_layout(self.tegels)
+        tel: dict[str, int] = {}
+        for dp, _p, _r in dagen.values():
+            tel[self._soort(dp)] = tel.get(self._soort(dp), 0) + 1
+        woorden = {**TEGEL, "kiezen": "even kiezen", "laten": "blijft staan"}
+        kleuren = {"kiezen": theme.WARN, bw.VERWIJDEREN: theme.DANGER}
+        tegels = [(tel[k], woorden[k], kleuren.get(k, theme.TEXT if k != bw.STAAT_ER_AL
+                                                   else theme.TEXT_DIM))
+                  for k in TEGEL_VOLGORDE if tel.get(k)]
+        for i, (n, woord, kleur) in enumerate(tegels):
+            t = Tegel(n, woord, kleur)
+            t.setMinimumHeight(88)
+            self.tegels.addWidget(t, i // 2, i % 2)
+
+        # links: verwijderen of alleen toevoegen
+        leeg_layout(self.meldingen_links)
+        weg_dagen = sorted(dp.dag for dp, p, _r in dagen.values()
+                           if dp.netto_weg and not dp.keuze_nodig and not p.alleen_toevoegen)
+        weg = len(weg_dagen)
+        alleen = any(p.alleen_toevoegen for p in self.plannen)
+        if alleen:
+            vak, vl = kaart("warnBox")
+            vl.addWidget(self._melding_regel(
+                "let-op", theme.WARN, "<b>Deze keer voegt de app alleen toe.</b> Hij past "
+                "niets aan en verwijdert niets. Waarom staat rechts."))
+            self.meldingen_links.addWidget(vak)
+        elif weg:
+            vak, vl = kaart("dangerBox")
+            vl.addWidget(self._melding_regel(
+                "let-op", theme.DANGER,
+                "<b>Er gaan diensten uit je agenda</b> op "
+                + ", ".join(dag_kort(d) for d in weg_dagen)
+                + ", omdat ze niet meer in je rooster staan. Rechts staat welke. "
+                "Je eigen afspraken blijven staan."))
+            self.verwijder_check = QCheckBox("Ja, dat mag weg")
+            self.verwijder_check.setChecked(self.keuzes.verwijderen_bevestigd)
+            self.verwijder_check.toggled.connect(self._verwijderen_bevestigd)
+            vl.addWidget(self.verwijder_check)
+            vl.addWidget(label("Zonder dit vinkje blijven die dagen zoals ze nu zijn.",
+                               "statusDim", wrap=True))
+            self.meldingen_links.addWidget(vak)
+        else:
+            vak, vl = kaart()
+            vl.addWidget(self._melding_regel(
+                "schild", theme.TEXT_DIM,
+                f"<b style='color:{theme.TEXT}'>Er wordt niets verwijderd.</b> "
+                "Je eigen afspraken blijven staan."))
+            self.meldingen_links.addWidget(vak)
+
+        # rechts: meldingen, vragen, dagen
+        leeg_layout(self.lijst)
+        meldingen = list(dict.fromkeys(m for p in self.plannen for m in p.meldingen))
+        for m in meldingen:
+            self._vraagkaart(m, [])
+        self._vragen(dagen)
+        for dag, (dp, p, r) in dagen.items():
+            self._dagrijen(dp, p, r)
+        self.lijst.addStretch()
+        self._ververs_knop()
+
+    def _melding_regel(self, icoon: str, kleur: str, html_tekst: str) -> QWidget:
+        w = QWidget()
+        r = QHBoxLayout(w)
+        r.setContentsMargins(0, 0, 0, 0)
+        r.setSpacing(14)
+        r.addWidget(Icoon(icoon, 22, kleur), alignment=Qt.AlignmentFlag.AlignTop)
+        t = QLabel(html_tekst)
+        t.setTextFormat(Qt.TextFormat.RichText)
+        t.setWordWrap(True)
+        t.setStyleSheet(f"color: {theme.TEXT_DIM}; font-size: 15px;")
+        r.addWidget(t, stretch=1)
+        return w
+
+    def _verwijderen_bevestigd(self, aan: bool) -> None:
+        self.keuzes.verwijderen_bevestigd = aan
+        self._ververs_knop()
+
+    def _ververs_knop(self) -> None:
+        if not self.plannen:
+            return
+        n = sum(self._telt_mee(dp, p) for dp, p, _r in self._per_dag().values())
+        if n:
+            self.zet_btn.setText(f"Zet {n} {'wijziging' if n == 1 else 'wijzigingen'} "
+                                 "in mijn agenda")
+        else:
+            self.zet_btn.setText("Er is niets te veranderen")
+        self.zet_btn.setEnabled(bool(n) and not self._bezig)
+
+    def _vraagkaart(self, tekst: str, knoppen: list[tuple[str, object]]) -> None:
+        vak, vl = kaart("warnBox" if knoppen else "card")
+        vl.setContentsMargins(18, 14, 18, 14)
+        t = label(tekst, "", wrap=True)
+        t.setStyleSheet("font-size: 15px;")
+        vl.addWidget(t)
+        if knoppen:
+            rij = QHBoxLayout()
+            for i, (k, actie) in enumerate(knoppen):
+                rij.addWidget(knop(k, "smallPrimary" if i == 0 else "small", actie))
+            rij.addStretch()
+            vl.addLayout(rij)
+        self.lijst.addWidget(vak)
+        self.lijst.addSpacing(10)
+
+    def _kies(self, **wijziging) -> None:
+        """Pas de keuzes aan en plan opnieuw."""
+        for k, v in wijziging.items():
+            setattr(self.keuzes, k, v)
+        self._plan()
+
+    def _kies_dag(self, veld: str, dag: date) -> None:
+        getattr(self.keuzes, veld).add(dag)
+        self._plan()
+
+    def _laat(self, dagen: list[date], nee: str = "") -> None:
+        self._laten |= set(dagen)
+        if nee:
+            self._nee.add(nee)
+        self._toon_plan()
+
+    def _vragen(self, dagen) -> None:
+        open_ = [(dp, p, r) for dp, p, r in dagen.values()
+                 if dp.keuze_nodig and dp.dag not in self._laten]
+
+        def van(uitkomst):
+            return [dp.dag for dp, _p, _r in open_ if dp.uitkomst == uitkomst]
+
+        oude = sum(p.oude_items for p in self.plannen)
+        if oude and "oude" not in self._nee:
+            self._vraagkaart(
+                f"In deze agenda staan nog {oude} item(s) die een oudere versie van de app "
+                "heeft gezet. Staan in deze agenda alleen jouw eigen diensten? Dan kan de app "
+                "die items overnemen en bijwerken.",
+                [("Ja, alleen mijn eigen diensten", lambda: self._kies(oude_items_zijn_van_mij=True)),
+                 ("Nee, laat ze staan", lambda: self._laat(van(bw.MOGELIJK_DUBBEL), "oude"))])
+        ouder = van(bw.OUDER_ROOSTER)
+        if ouder:
+            self._vraagkaart(
+                f"Dit rooster is ouder dan wat al in je agenda staat ({len(ouder)} "
+                f"{'dag' if len(ouder) == 1 else 'dagen'}). Toch dit rooster gebruiken?",
+                [("Toch verwerken", lambda: self._kies(ouder_toestaan=True)),
+                 ("Overslaan", lambda: self._laat(ouder))])
+        anders = van(bw.ANDERE_INHOUD)
+        if anders:
+            self._vraagkaart(
+                "Er staat al een rooster met dezelfde datum maar een andere inhoud in je "
+                f"agenda ({len(anders)} {'dag' if len(anders) == 1 else 'dagen'}). "
+                "Welke wil je houden?",
+                [("Dit rooster gebruiken", lambda: self._kies(andere_inhoud_toestaan=True)),
+                 ("Laat staan wat er staat", lambda: self._laat(anders))])
+        onbegrepen = [dp.dag for dp, _p, _r in open_ if dp.uitkomst == bw.OVERGESLAGEN]
+        if onbegrepen:
+            regels = [regel for r in self.roosters for regel in r.onbegrepen.get(None, [])]
+            self._vraagkaart(
+                "In het rooster staat een regel die de app niet begrijpt"
+                + (f": “{regels[0]}”" if regels else "") + ". Daarom verandert de app niets. "
+                "Wil je toch de diensten toevoegen? Hij past dan niets aan en verwijdert niets.",
+                [("Toch alleen toevoegen", lambda: self._kies(onbegrepen_bevestigd=True)),
+                 ("Niets doen", lambda: self._laat(onbegrepen))])
+        for dp, p, _r in open_:
+            if dp.uitkomst == bw.ZELF_AANGEPAST:
+                self._vraagkaart(
+                    f"{dag_kort(dp.dag)}: {dp.reden}. Wil je het overschrijven met het rooster?",
+                    [("Overschrijven", lambda d=dp.dag: self._kies_dag("overschrijf_aangepast", d)),
+                     ("Laten staan", lambda d=dp.dag: self._laat([d]))])
+            elif dp.uitkomst == bw.MOGELIJK_DUBBEL and not p.oude_items:
+                self._vraagkaart(
+                    f"{dag_kort(dp.dag)}: {dp.reden}. Vervangen door wat in het rooster staat?",
+                    [("Vervangen", lambda d=dp.dag: self._kies_dag("vervang_oude_items", d)),
+                     ("Laten staan", lambda d=dp.dag: self._laat([d]))])
+
+    def _rij(self, datum: str, kleur: str | None, naam: str, tijd: str, taak: str,
+             pil: QWidget | None, gedimd: bool = False) -> None:
+        rij = QFrame()
+        rij.setStyleSheet(f"QFrame {{ border: none; border-bottom: 1px solid {theme.BORDER}; }}"
+                          " QLabel { border: none; }")
+        r = QHBoxLayout(rij)
+        r.setContentsMargins(0, 14, 0, 14)
+        r.setSpacing(10)
+        d = QLabel(datum)
+        d.setFixedWidth(84)
+        d.setStyleSheet(f"color: {theme.TEXT_DIM}; font-size: 16px;")
+        r.addWidget(d)
+        if kleur is None:
+            r.addSpacing(16)
+        else:
+            r.addWidget(Stip(kleur, 16))
+        n = QLabel(naam if len(naam) <= 16 else naam[:15] + "…")
+        n.setToolTip(naam)
+        n.setFixedWidth(124)
+        n.setStyleSheet(f"font-size: 17px; font-weight: 700; "
+                        f"color: {theme.TEXT_DIM if gedimd else theme.TEXT};")
+        r.addWidget(n)
+        t = QLabel(tijd)
+        t.setFixedWidth(104)
+        t.setStyleSheet("font-size: 16px;")
+        r.addWidget(t)
+        k = QLabel(taak)
+        k.setToolTip(taak)
+        k.setStyleSheet(f"color: {theme.TEXT_DIM}; font-size: 15px;")
+        k.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        r.addWidget(k, stretch=1)
+        if pil is not None:
+            r.addWidget(pil)
+        self.lijst.addWidget(rij)
+
+    def _naam(self, x: Shift) -> str:
+        if x.shift_type == ShiftType.AFSPRAAK:
+            return x.display_name.split(" - ")[0]
+        naam = self.settings.name_for(x.sleutel)
+        if x.is_concept and self.settings.rules.get("mark_concept", True):
+            naam += " (concept)"
+        return naam
+
+    def _dagrijen(self, dp: bw.DagPlan, p: bw.Plan, r: Roster) -> None:
+        s = self._indeel_instellingen()
+        diensten = sorted((x for x in bw._zichtbaar(r.shifts, s) if _dag_van(x) == dp.dag),
+                          key=lambda x: x.start)
+        soort = self._soort(dp)
+        pil_soort = dp.uitkomst if soort == "kiezen" else soort
+        datum = dag_kort(dp.dag)
+        if not diensten:
+            self._rij(datum, None, "Geen dienst", "", dp.reden if soort == bw.OVERGESLAGEN else "",
+                      _pil(pil_soort), gedimd=True)
+            datum = ""
+        for i, x in enumerate(diensten):
+            taak = x.info if x.shift_type != ShiftType.AFSPRAAK else ""
+            stap = next((st for st in dp.stappen if st.actie == "werk_bij" and st.na
+                         and st.na.start == x.start and st.voor), None)
+            if stap and (stap.voor.start, stap.voor.end) != (stap.na.start, stap.na.end):
+                was = tijden(stap.voor.start, stap.voor.end, stap.voor.all_day)
+                taak = f"{taak} · was {was}" if taak else f"was {was}"
+            if soort == bw.OVERGESLAGEN and dp.reden and i == 0:
+                taak = dp.reden
+            self._rij(datum if i == 0 else "", theme.kleur_voor(s, x.sleutel), self._naam(x),
+                      tijden(x.start, x.end, x.all_day), taak,
+                      _pil(pil_soort) if i == 0 else None)
+        if dp.netto_weg and not dp.keuze_nodig and diensten:
+            for st in dp.stappen:
+                if st.actie == "verwijder" and st.voor:
+                    v = st.voor
+                    naam, _, taak = v.title.partition(" - ")
+                    self._rij("", "", naam, tijden(v.start, v.end, v.all_day), taak,
+                              _pil(bw.VERWIJDEREN), gedimd=True)
+
+    # ----- .ics-route: geen plan, alleen een bestand --------------------
+    def _bestand_shifts(self) -> list[tuple[Roster, list[Shift]]]:
+        """Per rooster de diensten die in het bestand komen; bij overlap wint
+        per dag het rooster met de hoogste rang."""
+        s = self._indeel_instellingen()
+        winnaar: dict[date, Roster] = {}
+        for r in self.roosters:
+            for x in r.shifts:
+                winnaar[_dag_van(x)] = r
+        return [(r, [x for x in bw._zichtbaar(r.shifts, s) if winnaar[_dag_van(x)] is r])
+                for r in self.roosters]
+
+    def _toon_bestand_plan(self) -> None:
+        self.plannen = []
+        leeg_layout(self.tegels)
+        leeg_layout(self.meldingen_links)
+        leeg_layout(self.lijst)
+        per_rooster = self._bestand_shifts()
+        n = sum(len(xs) for _r, xs in per_rooster)
+        self.tegels.addWidget(Tegel(n, "diensten in het bestand"), 0, 0)
+        vak, vl = kaart("warnBox")
+        vl.addWidget(self._melding_regel(
+            "info", theme.WARN,
+            "<b>De app maakt een bestand dat je zelf in je agenda inleest.</b> Je gekozen "
+            "agenda kan de app niet inzien. Bijwerken, verwijderen en ongedaan maken kunnen "
+            "hier dus niet."))
+        self.meldingen_links.addWidget(vak)
+        for m in dict.fromkeys(m for r in self.roosters for m in r.meldingen):
+            self._vraagkaart(m, [])
+        s = self._indeel_instellingen()
+        vorige = None
+        for _r, xs in per_rooster:
+            for x in sorted(xs, key=lambda x: x.start):
+                d = _dag_van(x)
+                self._rij(dag_kort(d) if d != vorige else "", theme.kleur_voor(s, x.sleutel),
+                          self._naam(x), tijden(x.start, x.end, x.all_day),
+                          x.info if x.shift_type != ShiftType.AFSPRAAK else "",
+                          _pil("bestand") if d != vorige else None)
+                vorige = d
+        self.lijst.addStretch()
+        self.zet_btn.setText(f"Maak het bestand ({n} {'dienst' if n == 1 else 'diensten'})")
+        self.zet_btn.setEnabled(bool(n))
+
+    # ------------------------------------------------------------------
+    def start_bijwerken(self) -> None:
+        if self._bezig or not self.roosters:
+            return
+        backend = self._koppeling()
+        if not backend.can_inspect_calendar:
+            self._maak_bestand(backend)
+            return
+        s = Settings.from_dict(self._indeel_instellingen().to_dict())
+        roosters, plannen, keuzes = list(self.roosters), list(self.plannen), self.keuzes
+        self.status.setVisible(False)
+        self.voortgang.setRange(0, 0)
+        self.voortgang_lbl.setText("Bezig met je agenda…")
+
+        def uitvoeren(voortgang):
+            beheer = bw.Beheer.laad()
+            totaal = bw.Uitkomst()
+            gebruikt = []
+            for i, (r, plan) in enumerate(zip(roosters, plannen)):
+                if any(_overlapt(r, eerder) for eerder in roosters[:i]):
+                    # Een eerder rooster heeft deze dagen net veranderd.
+                    plan = bw.maak_plan(r, r.shifts, backend, s, beheer, keuzes)
+                uit = bw.voer_uit(plan, backend, beheer, keuzes, voortgang)
+                gebruikt.append(plan)
+                totaal.toegevoegd += uit.toegevoegd
+                totaal.bijgewerkt += uit.bijgewerkt
+                totaal.verwijderd += uit.verwijderd
+                totaal.dagen_klaar += uit.dagen_klaar
+                totaal.niet_bijgewerkt.update(uit.niet_bijgewerkt)
+                totaal.fouten += uit.fouten
+            return totaal, gebruikt
+
+        self._start(uitvoeren, self._klaar_bijgewerkt, met_voortgang=True)
+
+    def _maak_bestand(self, backend) -> None:
+        per_rooster = self._bestand_shifts()
+        naam = self.settings.calendar_name
+        self.voortgang.setRange(0, 0)
+        self.voortgang_lbl.setText("Het bestand wordt gemaakt…")
+
+        def maak():
+            backend.begin(naam)
+            for r, xs in per_rooster:
+                bw.vaste_uids(xs, r.personeelsnummer)
+                for x in xs:
+                    backend.add_shift(naam, x)
+            backend.finalize()
+            return backend.last_output, sum(len(xs) for _r, xs in per_rooster)
+
+        self._start(maak, self._klaar_bestand)
+
+    # ------------------------------------------------------------------
+    # Stap 3: klaar
+    # ------------------------------------------------------------------
+    def _bouw_klaar(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 20, 0, 0)
+        lay.setSpacing(16)
+        lay.addStretch()
+        self.vink = Vinkrondje(120)
+        lay.addWidget(self.vink, alignment=Qt.AlignmentFlag.AlignCenter)
+        lay.addSpacing(10)
+        self.klaar_titel = label("Je agenda is bijgewerkt", "pageTitle")
+        self.klaar_titel.setStyleSheet("font-size: 36px;")
+        self.klaar_titel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lay.addWidget(self.klaar_titel)
+        self.klaar_tekst = label("", "lead", wrap=True)
+        self.klaar_tekst.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.klaar_tekst.setStyleSheet("font-size: 18px;")
+        lay.addWidget(self.klaar_tekst)
+        lay.addSpacing(12)
+        rij = QHBoxLayout()
+        rij.addStretch()
+        self.nog_een_btn = knop("Nog een rooster inlezen", "primary", self.reset_file)
+        self.nog_een_btn.setMinimumWidth(280)
+        rij.addWidget(self.nog_een_btn)
+        rij.addSpacing(12)
+        self.ongedaan_btn = knop("Ongedaan maken", "big", self.maak_ongedaan)
+        self.ongedaan_btn.setMinimumWidth(220)
+        self.ongedaan_btn.setMinimumHeight(60)
+        rij.addWidget(self.ongedaan_btn)
+        rij.addStretch()
+        lay.addLayout(rij)
+        self.veranderd_btn = knop("Bekijk wat er veranderd is", "link", self.toon_veranderingen)
+        lay.addWidget(self.veranderd_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.niet_vak = QVBoxLayout()
+        lay.addLayout(self.niet_vak)
+        lay.addStretch()
+        vak, vl = kaart()
+        vl.setContentsMargins(22, 16, 22, 16)
+        self.klaar_info = self._melding_regel(
+            "info", theme.TEXT_DIM, "Krijg je een nieuw rooster? Lees het gewoon opnieuw in. "
+            "De app past alleen aan wat veranderd is en raakt je eigen afspraken niet aan.")
+        vl.addWidget(self.klaar_info)
+        self.klaar_info_lbl = self.klaar_info.findChild(QLabel)
+        lay.addWidget(vak)
+        return w
+
+    def _naar_klaar(self) -> None:
+        self.stappen.zet(2)
+        self.pagina.setCurrentIndex(2)
+        leeg_layout(self.niet_vak)
+
+    def _klaar_bijgewerkt(self, resultaat) -> None:
+        uit, gebruikt = resultaat
+        self.uitkomst, self._uitgevoerd = uit, gebruikt
+        # Dagen waar eerst een keuze nodig was en die niet gemaakt is.
+        for p in gebruikt:
+            for dp in p.dagen:
+                if dp.keuze_nodig and dp.dag not in uit.dagen_klaar:
+                    uit.niet_bijgewerkt.setdefault(
+                        dp.dag, "je koos om het te laten staan" if dp.dag in self._laten
+                        else dp.reden)
+        self._naar_klaar()
+        delen = [f"{n} {w}" for n, w in ((uit.toegevoegd, "toegevoegd"),
+                                         (uit.bijgewerkt, "aangepast"),
+                                         (uit.verwijderd, "verwijderd")) if n]
+        delen = delen or ["er hoefde niets te veranderen"]
+        delen.append(f"agenda {self.settings.calendar_name}")
+        self.klaar_tekst.setText(" · ".join(delen))
+        gedaan = uit.toegevoegd + uit.bijgewerkt + uit.verwijderd
+        if uit.fouten and not gedaan:
+            self.vink.zet(theme.DANGER, "uitroep")
+            self.klaar_titel.setText("Het bijwerken is niet gelukt")
+            self.klaar_tekst.setText(" ".join(uit.fouten))
+        elif uit.niet_bijgewerkt or uit.fouten:
+            self.vink.zet(theme.WARN, "uitroep")
+            self.klaar_titel.setText("Je agenda is bijgewerkt, op een paar dagen na")
+        else:
+            self.vink.zet(theme.OK, "vink")
+            self.klaar_titel.setText("Je agenda is bijgewerkt")
+        if uit.niet_bijgewerkt or (uit.fouten and gedaan):
+            vak, vl = kaart("warnBox")
+            vak.setFixedWidth(620)
+            vl.addWidget(label("Deze dagen zijn niet bijgewerkt:", "", wrap=True))
+            for dag, reden in sorted(uit.niet_bijgewerkt.items()):
+                vl.addWidget(label(f"{dag_kort(dag)}: {reden}", "statusDim", wrap=True))
+            for f in uit.fouten if gedaan else []:
+                vl.addWidget(label(f, "statusError", wrap=True))
+            self.niet_vak.addWidget(vak, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.ongedaan_btn.setVisible(bw.kan_ongedaan())
+        self.veranderd_btn.setVisible(bool(uit.dagen_klaar))
+        self.klaar_info_lbl.setText(
+            "Krijg je een nieuw rooster? Lees het gewoon opnieuw in. De app past alleen aan "
+            "wat veranderd is en raakt je eigen afspraken niet aan.")
+
+    def _klaar_bestand(self, resultaat) -> None:
+        pad, n = resultaat
+        self._naar_klaar()
+        self.vink.zet(theme.OK, "vink")
+        self.klaar_titel.setText("Je bestand staat klaar")
+        self.klaar_tekst.setText(f"{n} {'dienst' if n == 1 else 'diensten'}"
+                                 + (f" · {Path(pad).name} in {Path(pad).parent.name}" if pad else ""))
+        self.ongedaan_btn.setVisible(False)
+        self.veranderd_btn.setVisible(False)
+        self.klaar_info_lbl.setText(
+            "Open het bestand in je agenda-app om de diensten toe te voegen. De app kan die "
+            "agenda niet inzien: bijwerken, verwijderen en ongedaan maken kunnen hier niet.")
+
+    def maak_ongedaan(self) -> None:
+        if self._bezig:
+            return
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle("Ongedaan maken")
+        box.setText("De app zet je agenda terug zoals hij was vóór deze keer. Items die je "
+                    "sindsdien zelf hebt veranderd blijven staan.\n\nDoorgaan?")
+        ja = box.addButton("Ja, maak ongedaan", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Nee", QMessageBox.ButtonRole.RejectRole)
+        box.setStyleSheet(theme.QSS)
+        if not self._bevestig(box, ja):
+            return
+        backend = self._koppeling()
+        self.klaar_tekst.setText("Bezig met terugzetten…")
+        self._start(lambda: bw.maak_ongedaan(backend, bw.Beheer.laad()), self._klaar_ongedaan)
+
+    def _bevestig(self, box: QMessageBox, ja) -> bool:
+        """Toon de vraag; apart zodat een test hem kan beantwoorden."""
+        box.exec()
+        return box.clickedButton() is ja
+
+    def _klaar_ongedaan(self, uit) -> None:
+        leeg_layout(self.niet_vak)
+        if uit.fouten and not uit.hersteld:
+            self.vink.zet(theme.DANGER, "uitroep")
+            self.klaar_titel.setText("Ongedaan maken is niet gelukt")
+            self.klaar_tekst.setText(" ".join(uit.fouten))
+        else:
+            self.vink.zet(theme.OK, "vink")
+            self.klaar_titel.setText("Je agenda is teruggezet")
+            tekst = f"{uit.hersteld} item(s) teruggezet"
+            if uit.blijft_staan:
+                tekst += (f" · {len(uit.blijft_staan)} item(s) heb je zelf veranderd; "
+                          "die blijven staan")
+            if uit.fouten:
+                tekst += " · " + " ".join(uit.fouten)
+            self.klaar_tekst.setText(tekst)
+        self.ongedaan_btn.setVisible(bw.kan_ongedaan() and bool(uit.fouten))
+        self.veranderd_btn.setVisible(False)
+
+    def toon_veranderingen(self) -> None:
+        regels = []
+        klaar = set(self.uitkomst.dagen_klaar) if self.uitkomst else set()
+        woord = {"voeg_toe": "erbij", "werk_bij": "aangepast", "verwijder": "weg"}
+        for p in getattr(self, "_uitgevoerd", []):
+            for dp in p.dagen:
+                if dp.dag not in klaar or not dp.stappen:
+                    continue
+                regels.append(dag_lang(dp.dag))
+                for st in dp.stappen:
+                    item = st.na if st.actie != "verwijder" else st.voor
+                    regels.append(f"   {woord[st.actie]}: {item.title}, "
+                                  f"{tijden(item.start, item.end, item.all_day)}")
+        d = QDialog(self)
+        d.setWindowTitle("Wat er veranderd is")
+        d.setStyleSheet(theme.QSS)
+        d.resize(620, 520)
+        lay = QVBoxLayout(d)
+        lay.setContentsMargins(24, 22, 24, 22)
+        lay.addWidget(label("Wat er veranderd is", "appTitle"))
+        tekst = QPlainTextEdit("\n".join(regels) or "Er is niets veranderd.")
+        tekst.setReadOnly(True)
+        lay.addWidget(tekst, stretch=1)
+        rij = QHBoxLayout()
+        rij.addStretch()
+        rij.addWidget(knop("Sluiten", "secondary", d.accept))
+        lay.addLayout(rij)
+        d.exec()
 
     # ------------------------------------------------------------------
     def reset_file(self) -> None:
-        """Clear the loaded roster so the user can start over. Settings and
-        the chosen agenda are left untouched."""
-        self.shifts = []
-        self.preview.clear()
-        self.preview.setVisible(False)
-        while self.chips_row.count():
-            item = self.chips_row.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-        self.progress_bar.setVisible(False)
-        self.sync_btn.setEnabled(False)
-        self.reset_btn.setEnabled(False)
-        self._set_status("Nog geen rooster geladen.", "statusDim")
+        """Terug naar stap 1. Instellingen en de gekozen agenda blijven staan."""
+        if self._bezig:
+            return
+        self.roosters, self.plannen, self.paden = [], [], []
+        self._ruw = {}
+        self.keuzes = bw.Keuzes()
+        self._laten = set()
+        self.uitkomst = None
+        leeg_layout(self.lijst)
+        leeg_layout(self.tegels)
+        leeg_layout(self.meldingen_links)
+        self.drop_zone.toon_fout("")
+        self.stappen.zet(0)
+        self.pagina.setCurrentIndex(0)
 
     # ------------------------------------------------------------------
-    def _auto_check_duplicates(self) -> None:
-        """Automatically compare the loaded roster with the chosen calendar
-        and mark items that are already in it."""
-        backend = get_backend(self.settings.backend_id)
-        if not self.shifts:
-            return
-        if not backend.can_inspect_calendar:
-            self._set_status(
-                f"{len(self.shifts)} items geladen. ⚠ Let op: in .ics export-modus "
-                f"kan de app niet controleren op dubbele items — dat gebeurt in de "
-                f"agenda-app waarin je het bestand importeert.",
-                "statusWarn",
-            )
-            return
-        if not self.settings.calendar_name:
-            return
-        shifts, settings = self.shifts, self.settings
+    def _na_instellingen(self, settings: Settings | None = None) -> None:
+        """Instellingen zijn veranderd: opnieuw indelen en plannen."""
+        self.settings = settings or Settings.load()
+        self._sluit_extra()
+        self._ververs_agendabalk()
+        if self.roosters and self.pagina.currentIndex() == 1:
+            self._deel_in()
+            self._naar_controle()
 
-        self._check_worker = _Worker(
-            lambda: mark_already_imported(shifts, backend, settings), self
-        )
-
-        def on_done(count: int) -> None:
-            if shifts is not self.shifts:
-                return  # a different file was loaded meanwhile
-            self._refresh_preview()
-            if count:
-                self._set_status(
-                    f"{len(self.shifts)} items geladen, waarvan {count} al in je "
-                    f"agenda staan (rood). Die worden bij synchroniseren "
-                    f"automatisch overgeslagen.",
-                    "statusOk",
-                )
-
-        def on_fail(msg: str) -> None:
-            self._set_status(
-                f"Rooster geladen. Automatische controle op dubbele items lukte "
-                f"niet: {msg}",
-                "statusError",
-            )
-
-        self._check_worker.done.connect(on_done)
-        self._check_worker.failed.connect(on_fail)
-        self._check_worker.start()
-
-    def _refresh_preview(self) -> None:
-        # Chips
-        while self.chips_row.count():
-            item = self.chips_row.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-        counts: dict[ShiftType, int] = {}
-        for s in self.shifts:
-            counts[s.shift_type] = counts.get(s.shift_type, 0) + 1
-        for t in ShiftType.ordered():
-            if counts.get(t):
-                self.chips_row.addWidget(
-                    CountChip(t, self.settings.name_for(t), counts[t])
-                )
-        self.chips_row.addStretch()
-
-        # List
-        self.preview.clear()
-        for s in self.shifts:
-            day = WEEKDAYS[s.start.weekday()]
-            when = (
-                f"{day} {s.start:%d-%m-%Y}   hele dag"
-                if s.all_day
-                else f"{day} {s.start:%d-%m-%Y}   {s.start:%H:%M}–{s.end:%H:%M}"
-            )
-            if s.shift_type == ShiftType.NEGEREN:
-                item = QListWidgetItem(
-                    f"{when}    {s.display_name}    —  wordt niet gesynchroniseerd"
-                )
-                item.setForeground(QColor(theme.SHIFT_COLORS[ShiftType.NEGEREN]))
-                item.setToolTip(
-                    "Dit item is herkend als roosterruis (zie Instellingen → "
-                    "Herkenning → Negeren) en komt niet in je agenda."
-                )
-            elif s.already_imported:
-                item = QListWidgetItem(
-                    f"{when}    {s.display_name}    —  staat al in je agenda"
-                )
-                item.setForeground(QColor(theme.DANGER))
-                item.setToolTip(
-                    "Dit item is al eerder geïmporteerd en wordt bij "
-                    "synchroniseren overgeslagen.\n"
-                    f"Origineel: {s.original_summary or '(leeg)'}"
-                )
-            else:
-                item = QListWidgetItem(f"{when}    {s.display_name}")
-                item.setForeground(QColor(theme.SHIFT_COLORS[s.shift_type]))
-                item.setToolTip(f"Origineel: {s.original_summary or '(leeg)'}")
-            self.preview.addItem(item)
-        self.preview.setVisible(True)
-
-    # ------------------------------------------------------------------
     def open_settings(self) -> None:
-        """Show the settings as a full-window page inside the app."""
+        if self._bezig:
+            return
         panel = SettingsPanel(self.settings)
-        self._stack.addWidget(panel)
-        self._stack.setCurrentWidget(panel)
+        panel.saved.connect(lambda: self._na_instellingen())
+        panel.cancelled.connect(self._sluit_extra)
+        panel.instelhulp.connect(self.open_instelhulp)
+        self._toon_extra(panel)
 
-        def close_panel() -> None:
-            self._stack.setCurrentIndex(0)
-            self._stack.removeWidget(panel)
-            panel.deleteLater()
+    def _voorbeeld_shifts(self) -> list[Shift]:
+        return [x for r in self.roosters for x in self._ruw.get(id(r), [])]
 
-        def on_saved() -> None:
-            self.settings = Settings.load()
-            if self.shifts:
-                self.shifts = apply_classification(self.shifts, self.settings)
-                self._refresh_preview()
-                self._auto_check_duplicates()
-            self._set_status("Instellingen opgeslagen.", "statusOk")
-            close_panel()
+    def open_instelhulp(self) -> None:
+        if self._bezig:
+            return
+        from .wizard import Instelhulp
 
-        panel.saved.connect(on_saved)
-        panel.cancelled.connect(close_panel)
+        hulp = Instelhulp(self.settings, all_backends(), self._voorbeeld_shifts())
+        hulp.klaar.connect(self._na_instellingen)
+        hulp.later.connect(self._sluit_extra)
+        self._toon_extra(hulp)
 
-    # ------------------------------------------------------------------
+    def open_agenda_kiezen(self) -> None:
+        if self._bezig:
+            return
+        from .wizard import Instelhulp
+
+        hulp = Instelhulp(self.settings, all_backends(), alleen_agenda=True)
+        hulp.klaar.connect(self._na_instellingen)
+        hulp.later.connect(self._sluit_extra)
+        self._toon_extra(hulp)
+
     def open_handleiding(self) -> None:
-        """Open the bundled handout PDF in the system's default viewer."""
         from ..resources import asset_path, open_path
 
         pdf = asset_path("handleiding.pdf")
         if pdf.exists():
             open_path(pdf)
-            self._set_status("Handleiding geopend.", "statusOk")
-        else:
-            self._set_status(
-                "Handleiding niet gevonden in deze installatie.", "statusError"
-            )
 
-    # ------------------------------------------------------------------
     def open_feedback(self) -> None:
         from .feedback_dialog import FeedbackDialog
 
-        FeedbackDialog(self).exec()
-
-    # ------------------------------------------------------------------
-    def check_for_updates(self) -> None:
-        """Manual update check from the title bar (same actions as in
-        Instellingen → Onderhoud): show the update dialog or the
-        up-to-date confirmation."""
-        from ..core.updater import (
-            check_for_update,
-            current_version,
-            is_dev_build,
-        )
-
-        self.header_update_btn.setEnabled(False)
-
-        def restore():
-            self.header_update_btn.setEnabled(True)
-
-        if is_dev_build():
-            from .update_dialog import UpToDateDialog
-
-            UpToDateDialog(current_version(), self).exec()
-            restore()
-            return
-
-        self._set_status("Controleren op updates…", "statusDim")
-        self._upd_worker = _Worker(check_for_update, self)
-
-        def on_done(update):
-            restore()
-            if update is None:
-                self._set_status("Je hebt de nieuwste versie.", "statusOk")
-                from .update_dialog import UpToDateDialog
-
-                UpToDateDialog(current_version(), self).exec()
-            else:
-                self._set_status(
-                    f"Versie v{update.version} beschikbaar!", "statusOk"
-                )
-                from .update_dialog import UpdateDialog
-
-                UpdateDialog(update, current_version(), self).exec()
-
-        def on_fail(msg):
-            restore()
-            self._set_status(msg, "statusError")
-
-        self._upd_worker.done.connect(on_done)
-        self._upd_worker.failed.connect(on_fail)
-        self._upd_worker.start()
-
-    # ------------------------------------------------------------------
-    def start_sync(self) -> None:
-        if not self.shifts:
-            return
-        backend = get_backend(self.settings.backend_id)
-        if backend.id != "ics_export" and not self.settings.calendar_name:
-            self._set_status(
-                "Kies eerst een agenda via ⚙ Instellingen → Agenda.", "statusError"
-            )
-            return
-        self.sync_btn.setEnabled(False)
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, len(self.shifts))
-        self.progress_bar.setValue(0)
-        self._set_status("Bezig met synchroniseren…")
-
-        self._worker = _SyncWorker(self.shifts, self.settings, self)
-        self._worker.progress.connect(self._on_progress)
-        self._worker.finished_report.connect(self._on_done)
-        self._worker.failed.connect(self._on_failed)
-        self._worker.start()
-
-    def _on_progress(self, done: int, total: int, message: str) -> None:
-        self.progress_bar.setRange(0, total)
-        self.progress_bar.setValue(done)
-        self._set_status(f"Toevoegen {done}/{total}: {message}")
-
-    def _on_done(self, report: SyncReport) -> None:
-        self.progress_bar.setVisible(False)
-        self.sync_btn.setEnabled(True)
-        parts = [f"{len(report.added)} toegevoegd"]
-        if report.concept_removed:
-            parts.append(
-                f"{report.concept_removed} verouderde conceptdienst(en) vervangen"
-            )
-        if report.skipped_existing:
-            parts.append(f"{len(report.skipped_existing)} stond(en) er al in")
-        if report.skipped_by_settings:
-            parts.append(
-                f"{len(report.skipped_by_settings)} overgeslagen (instellingen)"
-            )
-        summary = "Klaar: " + ", ".join(parts) + "."
-        if report.errors:
-            summary += " Fouten: " + " | ".join(report.errors[:3])
-            self._set_status(summary, "statusError")
-        else:
-            self._set_status(summary + " ✓", "statusOk")
-        # Everything that was just added is now "already imported": show it.
-        for shift in report.added + report.skipped_existing:
-            shift.already_imported = True
-        self._refresh_preview()
-
-    def _on_failed(self, message: str) -> None:
-        self.progress_bar.setVisible(False)
-        self.sync_btn.setEnabled(True)
-        self._set_status(message, "statusError")
+        FeedbackDialog(self, rooster=self.paden[0] if self.paden else "").exec()

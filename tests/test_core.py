@@ -6,23 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from werkrooster_sync.calendars.base import CalendarBackend
 from werkrooster_sync.calendars.ics_export import IcsExportBackend
 from werkrooster_sync.core.classifier import apply_classification, classify
 from werkrooster_sync.core.ics_parser import IcsParseError, parse_ics
-from werkrooster_sync.core.models import (
-    Shift,
-    ShiftType,
-    extract_sync_ids,
-    marker_for,
-)
+from werkrooster_sync.core.models import Shift, ShiftType
 from werkrooster_sync.core.settings import Settings
-from werkrooster_sync.core.sync import (
-    find_duplicates,
-    mark_already_imported,
-    prepare_shifts,
-    sync_shifts,
-)
 
 SAMPLE = Path(__file__).parent / "sample_rooster.ics"
 
@@ -378,12 +366,12 @@ def test_negeren_never_syncs():
     s = Settings()
     s.calendar_name = "Werk"
     shifts = apply_classification(parse_ics(BVCM), s)
-    backend = FakeBackend()
-    report = sync_shifts(shifts, backend, s)
-    assert report.ok
-    synced_titles = {x.display_name for x in report.added}
+    from werkrooster_sync.core.bijwerken import _zichtbaar
+
+    zichtbaar = _zichtbaar(shifts, s)
+    synced_titles = {x.display_name for x in zichtbaar}
     assert not any("Rust" in t or "Verjaardag" in t for t in synced_titles)
-    assert {x.shift_type for x in report.skipped_by_settings} == {ShiftType.NEGEREN}
+    assert {x.shift_type for x in shifts if x not in zichtbaar} == {ShiftType.NEGEREN}
 
 
 def test_time_extraction_can_be_disabled():
@@ -403,264 +391,29 @@ def test_sync_id_stable_across_time_extraction_setting():
 
 
 # ----------------------------------------------------------------------
-# Sync engine
+# ICS export backend ("een andere agenda": alleen een bestand maken)
 # ----------------------------------------------------------------------
-class FakeBackend(CalendarBackend):
-    id = "fake"
-    label = "Fake"
-
-    def __init__(self, existing=None, existing_ids=None, events=None):
-        self.added: list[Shift] = []
-        self.removed_ids: set[str] = set()
-        self._existing = existing or []
-        self._existing_ids = set(existing_ids or [])
-        self._events = list(events or [])
-
-    def is_available(self):
-        return True
-
-    def list_calendars(self):
-        return ["Werk"]
-
-    def add_shift(self, calendar_name, shift):
-        self.added.append(shift)
-
-    def existing_keys_list(self, calendar_name, start, end):
-        return list(self._existing)
-
-    def existing_sync_ids(self, calendar_name, start, end):
-        return set(self._existing_ids)
-
-    def scan_events(self, calendar_name, start, end):
-        return super().scan_events(calendar_name, start, end) + list(self._events)
-
-    def remove_by_sync_ids(self, calendar_name, start, end, sync_ids):
-        self.removed_ids |= set(sync_ids)
-        return len(sync_ids)
-
-
-def test_prepare_shifts_respects_vrij_and_afspraak_settings():
-    s = Settings()
-    shifts = apply_classification(parse_ics(SAMPLE), s)
-
-    s.include_vrij = True
-    to_sync, skipped = prepare_shifts(shifts, s)
-    assert len(to_sync) == 5 and not skipped
-
-    s.include_vrij = False
-    to_sync, skipped = prepare_shifts(shifts, s)
-    assert len(to_sync) == 4
-    assert skipped[0].shift_type == ShiftType.VRIJ
-
-    s.include_afspraken = False
-    to_sync, skipped = prepare_shifts(shifts, s)
-    assert len(to_sync) == 3
-    assert {x.shift_type for x in skipped} == {ShiftType.VRIJ, ShiftType.AFSPRAAK}
-
-
-def test_sync_skips_duplicates():
-    s = Settings()
-    s.calendar_name = "Werk"
-    shifts = apply_classification(parse_ics(SAMPLE), s)
-    existing = [shifts[0].dedupe_key]
-
-    backend = FakeBackend(existing=existing)
-    report = sync_shifts(shifts, backend, s)
-    assert report.ok
-    assert len(report.added) == 4
-    assert len(report.skipped_existing) == 1
-
-
-def test_sync_never_adds_same_shift_twice_in_one_run():
-    s = Settings()
-    s.calendar_name = "Werk"
-    shifts = apply_classification(parse_ics(SAMPLE), s)
-    doubled = shifts + [
-        make_shift(sh.start, sh.end, sh.original_summary, sh.all_day) for sh in shifts
-    ]
-    doubled = apply_classification(doubled, s)
-
-    backend = FakeBackend()
-    report = sync_shifts(doubled, backend, s)
-    assert len(report.added) == 5
-    # The duplicated Vrij day is already collapsed during classification;
-    # the four remaining work-item copies are caught by the sync-ID check.
-    assert len(report.skipped_existing) == 4
-
-
-def test_sync_skips_renamed_item_via_sync_id():
-    """A user renamed the calendar item (added a note to the title): the
-    sync-ID marker must still recognise it, so it is skipped and the user's
-    edit survives a re-import."""
-    s = Settings()
-    s.calendar_name = "Werk"
-    shifts = apply_classification(parse_ics(SAMPLE), s)
-    renamed = shifts[0]
-
-    # In the calendar the item now has a different title, so the legacy
-    # (title, start) key does NOT match — only the marker does.
-    backend = FakeBackend(
-        existing=[("ochtend - tandarts 14u!", renamed.dedupe_key[1])],
-        existing_ids={renamed.sync_id},
-    )
-    report = sync_shifts(shifts, backend, s)
-    assert report.ok
-    assert renamed not in report.added
-    assert renamed in report.skipped_existing
-    assert len(report.added) == 4
-
-
-def test_mark_already_imported_flags_shifts():
-    s = Settings()
-    s.calendar_name = "Werk"
-    shifts = apply_classification(parse_ics(SAMPLE), s)
-    backend = FakeBackend(existing_ids={shifts[1].sync_id, shifts[2].sync_id})
-    count = mark_already_imported(shifts, backend, s)
-    assert count == 2
-    assert [x.already_imported for x in shifts] == [False, True, True, False, False]
-
-
-def test_sync_adds_marker_to_description():
-    s = Settings()
-    s.calendar_name = "Werk"
-    shifts = apply_classification(parse_ics(SAMPLE), s)
-    backend = FakeBackend()
-    sync_shifts(shifts, backend, s)
-    for shift in backend.added:
-        assert marker_for(shift.sync_id) in shift.description
-        assert extract_sync_ids(shift.description) == [shift.sync_id]
-
-
-def _dienst_shift(day: int, summary: str) -> Shift:
-    return make_shift(
-        datetime(2026, 8, day), datetime(2026, 8, day + 1), summary, all_day=True
-    )
-
-
-def _concept_event(day: int, sync_id: str):
-    from werkrooster_sync.calendars.base import ExistingEvent
-
-    return ExistingEvent(
-        "laat (concept)", f"202608{day:02d}1400", sync_id, concept=True
-    )
-
-
-def test_definitive_shift_replaces_concept_item():
-    s = Settings()
-    s.calendar_name = "Werk"
-    shifts = apply_classification(
-        [_dienst_shift(5, "[R] 12345678 DIENST 07:00 - 16:00")], s
-    )
-    backend = FakeBackend(events=[_concept_event(5, "oldconcept01")])
-    report = sync_shifts(shifts, backend, s)
-    assert report.ok
-    assert backend.removed_ids == {"oldconcept01"}
-    assert report.concept_removed == 1
-    assert len(report.added) == 1
-    assert report.replaced == [shifts[0]]
-
-
-def test_updated_concept_replaces_older_concept():
-    s = Settings()
-    s.calendar_name = "Werk"
-    shifts = apply_classification(
-        [_dienst_shift(5, "[C1] 12345678 DIENST 15:00 - 23:30")], s
-    )
-    backend = FakeBackend(events=[_concept_event(5, "oldconcept01")])
-    report = sync_shifts(shifts, backend, s)
-    assert backend.removed_ids == {"oldconcept01"}
-    assert len(report.added) == 1
-    # The new concept item carries the concept tag for the next round.
-    from werkrooster_sync.core.models import CONCEPT_TAG
-
-    assert CONCEPT_TAG in backend.added[0].description
-
-
-def test_unchanged_concept_import_deletes_nothing():
-    s = Settings()
-    s.calendar_name = "Werk"
-    shifts = apply_classification(
-        [_dienst_shift(5, "[C1] 12345678 DIENST 15:00 - 23:30")], s
-    )
-    backend = FakeBackend(events=[_concept_event(5, shifts[0].sync_id)])
-    report = sync_shifts(shifts, backend, s)
-    assert backend.removed_ids == set()
-    assert not report.added
-    assert len(report.skipped_existing) == 1
-
-
-def test_afspraak_never_triggers_replacement():
-    s = Settings()
-    s.calendar_name = "Werk"
-    shifts = apply_classification(
-        [make_shift(datetime(2026, 8, 5, 12, 30), datetime(2026, 8, 5, 13, 0), "Briefing")], s
-    )
-    backend = FakeBackend(events=[_concept_event(5, "oldconcept01")])
-    report = sync_shifts(shifts, backend, s)
-    assert backend.removed_ids == set()
-    assert len(report.added) == 1
-    assert report.concept_removed == 0
-
-
-def test_replacement_can_be_disabled():
-    s = Settings()
-    s.calendar_name = "Werk"
-    s.replace_concept = False
-    shifts = apply_classification(
-        [_dienst_shift(5, "[R] 12345678 DIENST 07:00 - 16:00")], s
-    )
-    backend = FakeBackend(events=[_concept_event(5, "oldconcept01")])
-    report = sync_shifts(shifts, backend, s)
-    assert backend.removed_ids == set()
-    assert len(report.added) == 1
-
-
-def test_definitive_items_are_never_deleted():
-    from werkrooster_sync.calendars.base import ExistingEvent
-
-    s = Settings()
-    s.calendar_name = "Werk"
-    shifts = apply_classification(
-        [_dienst_shift(5, "[R] 12345678 DIENST 07:00 - 16:00")], s
-    )
-    definitive = ExistingEvent("ochtend", "202608050700", "definitief01", concept=False)
-    backend = FakeBackend(events=[definitive])
-    report = sync_shifts(shifts, backend, s)
-    assert backend.removed_ids == set()
-    assert report.concept_removed == 0
-
-
-def test_find_duplicates():
-    s = Settings()
-    s.calendar_name = "Werk"
-    key = ("ochtend", "202607200700")
-    backend = FakeBackend(existing=[key, key, ("laat", "202607211500")])
-    dups = find_duplicates(backend, s)
-    assert dups == {key: 2}
-
-
 def test_export_backend_cannot_inspect_calendar():
     from werkrooster_sync.calendars.base import CalendarError
 
     backend = IcsExportBackend(open_after=False)
     assert backend.can_inspect_calendar is False
     with pytest.raises(CalendarError):
-        backend.count_synced("x", datetime(2026, 1, 1), datetime(2026, 12, 31))
-    with pytest.raises(CalendarError):
-        backend.remove_synced("x", datetime(2026, 1, 1), datetime(2026, 12, 31))
+        backend.read_items("x", "", datetime(2026, 1, 1), datetime(2026, 12, 31))
 
 
-# ----------------------------------------------------------------------
-# ICS export backend
-# ----------------------------------------------------------------------
 def test_ics_export_roundtrip(tmp_path):
+    from werkrooster_sync.core.bijwerken import vaste_uids
+
     s = Settings()
-    s.calendar_name = "whatever"
     shifts = apply_classification(parse_ics(SAMPLE), s)
+    vaste_uids(shifts, "12345678")
 
     backend = IcsExportBackend(output_dir=tmp_path, open_after=False)
-    report = sync_shifts(shifts, backend, s)
-    assert report.ok
+    backend.begin("")
+    for x in shifts:
+        backend.add_shift("", x)
+    backend.finalize()
     assert backend.last_output is not None and backend.last_output.exists()
 
     # The exported file parses again and keeps the renamed shifts + reminders
@@ -671,5 +424,107 @@ def test_ics_export_roundtrip(tmp_path):
     content = backend.last_output.read_text(encoding="utf-8")
     assert "BEGIN:VALARM" in content
     assert "TRIGGER:-PT60M" in content  # dienst default reminder: 1 uur ervoor
-    # The sync-ID marker travels along in the description
-    assert "[WerkroosterSync:" in content
+    # Vaste UIDs: een nieuwere versie van het rooster werkt het item bij.
+    assert {x.uid for x in reparsed} == {f"{x.uid}@werkroostersync" for x in shifts}
+
+
+# ----------------------------------------------------------------------
+# Instellingen 2.0: verhuizen, veilig opslaan, nieuwe trefwoorden
+# ----------------------------------------------------------------------
+def _mappen():
+    import werkrooster_sync.core.settings as m
+    return m, m._portable_dir(), m._user_config_dir()
+
+
+def test_instellingen_verhuizen_van_naast_de_app_en_dat_bestand_wint():
+    m, naast, eigen = _mappen()
+    naast.mkdir(parents=True)
+    eigen.mkdir(parents=True)
+    (naast / "settings.json").write_text('{"calendar_name": "Actief"}', encoding="utf-8")
+    (eigen / "settings.json").write_text('{"calendar_name": "Verouderd"}', encoding="utf-8")
+
+    assert m.Settings.load().calendar_name == "Actief"
+    assert "Verouderd" in (eigen / "settings.verouderd.json").read_text(encoding="utf-8")
+    assert (naast / "settings.json").exists()  # oude versie blijft bruikbaar
+
+    # De verhuizing loopt maar één keer: een latere wijziging naast de app
+    # overschrijft de persoonlijke instellingen niet meer.
+    (naast / "settings.json").write_text('{"calendar_name": "Later"}', encoding="utf-8")
+    assert m.Settings.load().calendar_name == "Actief"
+
+
+def test_bestaande_persoonlijke_instellingen_blijven_zonder_bestand_naast_de_app():
+    m, naast, eigen = _mappen()
+    eigen.mkdir(parents=True)
+    (eigen / "settings.json").write_text('{"calendar_name": "Windows"}', encoding="utf-8")
+    assert m.Settings.load().calendar_name == "Windows"
+    assert not (eigen / "settings.verouderd.json").exists()
+
+
+def test_opslaan_bewaart_reservekopie_en_herstelt_bij_beschadiging():
+    m, naast, eigen = _mappen()
+    s = m.Settings(calendar_name="Eerste")
+    pad = s.save()
+    s.calendar_name = "Tweede"
+    s.save()
+    assert m.Settings.load().calendar_name == "Tweede"
+    pad.write_text("{half geschre", encoding="utf-8")
+    assert m.Settings.load().calendar_name == "Eerste"
+    pad.write_text("[1, 2]", encoding="utf-8")  # geldige json, verkeerde vorm
+    assert m.Settings.load().calendar_name == "Eerste"
+
+
+def test_nieuw_standaardtrefwoord_komt_aan_zonder_eigen_keuzes_te_overschrijven(monkeypatch):
+    import copy
+    m, naast, eigen = _mappen()
+    # Een bestand van versie 1: "cala" zelf weggehaald, "mijnverlof" toegevoegd.
+    oud = m.Settings().to_dict()
+    del oud["known_keywords"]
+    oud["rules"]["keywords"]["vrij"].remove("cala")
+    oud["rules"]["keywords"]["vrij"].append("mijnverlof")
+
+    nieuw = copy.deepcopy(m.DEFAULT_RULES)
+    nieuw["keywords"]["vrij"].append("nieuwverlof")
+    monkeypatch.setattr(m, "DEFAULT_RULES", nieuw)
+
+    s = m.Settings.from_dict(copy.deepcopy(oud))
+    vrij = s.rules["keywords"]["vrij"]
+    assert "nieuwverlof" in vrij      # nieuw uit de update
+    assert "mijnverlof" in vrij       # eigen toevoeging blijft
+    assert "cala" not in vrij         # zelf weggehaald blijft weg
+
+    # Daarna zelf weghalen blijft ook weg bij de volgende start.
+    opgeslagen = s.to_dict()
+    opgeslagen["rules"]["keywords"]["vrij"].remove("nieuwverlof")
+    assert "nieuwverlof" not in m.Settings.from_dict(opgeslagen).rules["keywords"]["vrij"]
+
+
+def test_logboek_schrijft_en_verbergt_de_thuismap(monkeypatch):
+    import logging
+    import sys
+    import threading
+    from pathlib import Path
+
+    from werkrooster_sync.core import logbook
+
+    root = logging.getLogger()
+    voor = list(root.handlers), sys.excepthook, threading.excepthook, root.level
+    gemeld = []
+    try:
+        logbook.setup(on_crash=gemeld.append)
+        logbook.log.info("Bestand in %s", Path.home() / "Documents")
+        sys.excepthook(ValueError, ValueError("kapot"), None)
+        for h in root.handlers:
+            h.flush()
+        staart = logbook.tail()
+        assert "Bestand in ~" in staart and str(Path.home()) not in staart
+        assert "Onverwachte fout" in staart and "kapot" in staart
+        assert gemeld == ["ValueError: kapot"]
+    finally:
+        for h in root.handlers[:]:
+            if h not in voor[0]:
+                root.removeHandler(h)
+                h.close()
+        sys.excepthook, threading.excepthook = voor[1], voor[2]
+        root.setLevel(voor[3])
+

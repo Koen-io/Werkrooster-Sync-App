@@ -9,8 +9,8 @@ from __future__ import annotations
 import sys
 from datetime import datetime, timedelta
 
-from ..core.models import Shift, extract_sync_ids
-from .base import CalendarBackend, CalendarError
+from ..core.models import Shift
+from .base import AgendaItem, CalendarBackend, CalendarError
 
 OL_APPOINTMENT_ITEM = 1
 OL_FOLDER_CALENDAR = 9
@@ -121,101 +121,184 @@ class OutlookBackend(CalendarBackend):
             raise CalendarError(f"Outlook weigert het item: {exc}") from exc
 
     # ------------------------------------------------------------------
-    def _items_in_range(self, folder, start: datetime, end: datetime):
-        items = folder.Items
-        items.IncludeRecurrences = True
-        items.Sort("[Start]")
-        restriction = (
-            f"[Start] >= '{start.strftime('%m/%d/%Y %I:%M %p')}'"
-            f" AND [Start] <= '{end.strftime('%m/%d/%Y %I:%M %p')}'"
-        )
-        return items.Restrict(restriction)
+    # Version 2: complete items, addressed by Outlook's own ids
+    # ------------------------------------------------------------------
+    _KEY_SEP = "|"
 
-    def _scan(
-        self, calendar_name: str, start: datetime, end: datetime
-    ) -> list[tuple[str, str, str, bool, object]]:
-        """Rows of (title_casefold, stamp, sync_id, concept, com_item)."""
-        from ..core.models import CONCEPT_TAG
+    def _all_folders(self, outlook) -> list[tuple[str, str, object]]:
+        """Every calendar folder as (name, key, folder). The key is the
+        store id plus the folder's entry id: two accounts that both have a
+        calendar called "Agenda" get different keys."""
+        ns = outlook.GetNamespace("MAPI")
+        found: list[tuple[str, str, object]] = []
+        seen: set[str] = set()
 
-        outlook = _com()
-        folder = self._folder(outlook, calendar_name)
-        rows: list[tuple[str, str, str, bool, object]] = []
+        def visit(folder, store_name: str) -> None:
+            try:
+                if folder.DefaultItemType == OL_APPOINTMENT_ITEM:
+                    key = f"{folder.StoreID}{self._KEY_SEP}{folder.EntryID}"
+                    if key not in seen:
+                        seen.add(key)
+                        found.append((str(folder.Name), key, folder, store_name))
+            except Exception:
+                pass
+            try:
+                for sub in folder.Folders:
+                    visit(sub, store_name)
+            except Exception:
+                pass
+
+        for store_root in ns.Folders:
+            try:
+                store_name = str(store_root.Name)
+                for sub in store_root.Folders:
+                    visit(sub, store_name)
+            except Exception:
+                continue
         try:
-            for item in self._items_in_range(folder, start, end):
-                subject = str(item.Subject or "")
-                item_start = item.Start  # pywintypes datetime
-                stamp = f"{item_start.year:04d}{item_start.month:02d}{item_start.day:02d}" \
-                        f"{item_start.hour:02d}{item_start.minute:02d}"
-                sync_id = ""
-                concept = subject.strip().casefold().endswith("(concept)")
-                try:
-                    body = str(item.Body or "")
-                    ids = extract_sync_ids(body)
-                    if ids:
-                        sync_id = ids[0]
-                    if CONCEPT_TAG in body:
-                        concept = True
-                except Exception:
-                    pass  # Body can be blocked by the Outlook security guard
-                rows.append((subject.strip().casefold(), stamp, sync_id, concept, item))
-        except Exception as exc:
-            raise CalendarError(f"Kan agenda-items niet lezen uit Outlook: {exc}") from exc
-        return rows
-
-    def existing_keys_list(
-        self, calendar_name: str, start: datetime, end: datetime
-    ) -> list[tuple[str, str]]:
-        return [(t, s) for t, s, _m, _c, _i in self._scan(calendar_name, start, end)]
-
-    def scan_events(self, calendar_name: str, start: datetime, end: datetime):
-        from .base import ExistingEvent
-
+            default = ns.GetDefaultFolder(OL_FOLDER_CALENDAR)
+            visit(default, "")  # only added when no store listed it
+            default_key = f"{default.StoreID}{self._KEY_SEP}{default.EntryID}"
+            found.sort(key=lambda f: f[1] != default_key)  # default calendar first
+        except Exception:
+            pass
+        # Same name in more than one account: show the account with it.
+        names = [f[0] for f in found]
         return [
-            ExistingEvent(t, s, m, c)
-            for t, s, m, c, _i in self._scan(calendar_name, start, end)
+            (f"{name} ({store})" if names.count(name) > 1 and store else name, key, folder)
+            for name, key, folder, store in found
         ]
 
-    # ------------------------------------------------------------------
-    def remove_duplicates(self, calendar_name: str, start: datetime, end: datetime) -> int:
-        seen: set[tuple[str, str]] = set()
-        surplus = []
-        for title, stamp, _marker, _concept, item in self._scan(calendar_name, start, end):
-            key = (title, stamp)
-            if key in seen:
-                surplus.append(item)
-            else:
-                seen.add(key)
-        return self._delete_items(surplus)
+    def calendars(self) -> list[tuple[str, str]]:
+        return [(name, key) for name, key, _f in self._all_folders(_com())]
 
-    def _delete_items(self, items: list) -> int:
+    def _folder_v2(self, outlook, name: str, key: str):
+        if key:
+            store_id, _, entry_id = key.partition(self._KEY_SEP)
+            try:
+                return outlook.GetNamespace("MAPI").GetFolderFromID(entry_id, store_id)
+            except Exception as exc:
+                raise CalendarError(
+                    f'Agenda "{name}" is niet meer te vinden in Outlook. '
+                    "Kies de agenda opnieuw in Instellingen."
+                ) from exc
+        return self._folder(outlook, name)
+
+    @staticmethod
+    def _naive(value) -> datetime:
+        return datetime(value.year, value.month, value.day, value.hour, value.minute)
+
+    def read_items(self, name: str, key: str, start: datetime, end: datetime) -> list[AgendaItem]:
+        outlook = _com()
+        folder = self._folder_v2(outlook, name, key)
+        result: list[AgendaItem] = []
         try:
+            items = folder.Items
+            # No Restrict(): its date texts depend on the Windows regional
+            # settings. Newest first, and stop once we are before the range.
+            items.Sort("[Start]", True)
             for item in items:
-                item.Delete()
+                try:
+                    item_start = self._naive(item.Start)
+                except Exception:
+                    continue  # not an appointment
+                if item_start > end:
+                    continue
+                if item_start < start:
+                    break
+                try:
+                    body = str(item.Body or "")
+                except Exception as exc:
+                    # Body can be blocked by the Outlook security guard. Without
+                    # it we cannot recognise our own items, so stop instead of
+                    # adding every shift a second time.
+                    raise CalendarError(
+                        "Outlook laat de notities van je agenda niet lezen. "
+                        "Er is niets veranderd.") from exc
+                result.append(AgendaItem(
+                    native_id=str(item.EntryID), title=str(item.Subject or ""),
+                    start=item_start, end=self._naive(item.End),
+                    all_day=bool(item.AllDayEvent), notes=body,
+                    location=str(item.Location or ""),
+                ))
+        except CalendarError:
+            raise
         except Exception as exc:
-            raise CalendarError(f"Verwijderen van roosteritems mislukt: {exc}") from exc
-        return len(items)
+            raise CalendarError(f"Kan agenda-items niet lezen uit Outlook: {exc}") from exc
+        return result
 
-    # ------------------------------------------------------------------
-    def count_synced(self, calendar_name: str, start: datetime, end: datetime) -> int:
-        rows = self._scan(calendar_name, start, end)
-        return sum(1 for _t, _s, marker, _c, _i in rows if marker)
+    @staticmethod
+    def _set_times(appt, item: AgendaItem, existing: bool) -> None:
+        end = item.end if item.end > item.start else item.start
+        if item.all_day:
+            # All-day items must run midnight to midnight in Outlook.
+            day = item.start.date()
+            end_day = max(end.date(), day + timedelta(days=1))
+            new_start = day.strftime("%Y-%m-%d") + " 00:00"
+            new_end = end_day.strftime("%Y-%m-%d") + " 00:00"
+        else:
+            new_start = item.start.strftime("%Y-%m-%d %H:%M")
+            new_end = end.strftime("%Y-%m-%d %H:%M")
+        appt.AllDayEvent = bool(item.all_day)
+        later = False
+        if existing:
+            try:
+                later = item.start > OutlookBackend._naive(appt.End)
+            except Exception:
+                later = False
+        # Never put the start after the end, not even for a moment.
+        if later:
+            appt.End = new_end
+            appt.Start = new_start
+        else:
+            appt.Start = new_start
+            appt.End = new_end
+        if item.all_day:
+            appt.AllDayEvent = True
 
-    def remove_synced(self, calendar_name: str, start: datetime, end: datetime) -> int:
-        return self._delete_items(
-            [
-                item
-                for _t, _s, marker, _c, item in self._scan(calendar_name, start, end)
-                if marker
-            ]
-        )
+    def add_item(self, name: str, key: str, item: AgendaItem) -> str:
+        outlook = _com()
+        folder = self._folder_v2(outlook, name, key)
+        try:
+            appt = folder.Items.Add(OL_APPOINTMENT_ITEM)
+            appt.Subject = item.title
+            self._set_times(appt, item, existing=False)
+            if item.location:
+                appt.Location = item.location
+            if item.reminder_minutes is not None:
+                appt.ReminderSet = True
+                appt.ReminderMinutesBeforeStart = int(item.reminder_minutes)
+            else:
+                appt.ReminderSet = False
+            appt.Body = item.notes
+            appt.Save()
+            return str(appt.EntryID)
+        except Exception as exc:
+            raise CalendarError(f"Outlook weigert het item: {exc}") from exc
 
-    def remove_by_sync_ids(
-        self, calendar_name: str, start: datetime, end: datetime, sync_ids: set[str]
-    ) -> int:
-        return self._delete_items(
-            [
-                item
-                for _t, _s, marker, _c, item in self._scan(calendar_name, start, end)
-                if marker in sync_ids
-            ]
-        )
+    def _item(self, outlook, key: str, native_id: str):
+        store_id = key.partition(self._KEY_SEP)[0] if key else ""
+        ns = outlook.GetNamespace("MAPI")
+        try:
+            return ns.GetItemFromID(native_id, store_id) if store_id else ns.GetItemFromID(native_id)
+        except Exception as exc:
+            raise CalendarError("Het agenda-item bestaat niet meer in Outlook.") from exc
+
+    def update_item(self, name: str, key: str, item: AgendaItem) -> None:
+        outlook = _com()
+        appt = self._item(outlook, key, item.native_id)
+        try:
+            self._set_times(appt, item, existing=True)
+            appt.Subject = item.title
+            appt.Body = item.notes  # last: carries the marker
+            appt.Save()
+        except Exception as exc:
+            raise CalendarError(f"Outlook weigert de wijziging: {exc}") from exc
+
+    def delete_item(self, name: str, key: str, native_id: str) -> None:
+        outlook = _com()
+        appt = self._item(outlook, key, native_id)
+        try:
+            appt.Delete()
+        except Exception as exc:
+            raise CalendarError(f"Verwijderen uit Outlook mislukt: {exc}") from exc

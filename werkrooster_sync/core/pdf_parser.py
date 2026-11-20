@@ -21,11 +21,18 @@ Free days: the definitive PDF leaves them empty and the concept PDF fills
 them with ``[Rust] 00:00-24:00``. With the ``empty_day_is_vrij`` rule
 (default on) such days become a *Vrij* item, matching the ICS export which
 lists free days explicitly.
+
+Since 2.0 the roster is read **per column** (see :func:`_read_columns`): the
+column positions come from the header row of the pdf itself, so time blocks,
+breaks and activities no longer leak into the soort. The line-based reader
+described above is kept as the fallback ("noodstand") for a pdf whose header
+row is not recognised.
 """
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta
+from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from .ics_parser import IcsParseError
@@ -67,17 +74,9 @@ class PdfParseError(IcsParseError):
     """Raised when the PDF cannot be read as a roster."""
 
 
-def _extract_lines(path: Path) -> tuple[list[str], bool]:
+def _extract_lines(reader) -> tuple[list[str], bool]:
     try:
-        from pypdf import PdfReader
-    except ImportError as exc:  # pragma: no cover
-        raise PdfParseError("PDF-ondersteuning ontbreekt (pypdf niet geïnstalleerd).") from exc
-
-    try:
-        reader = PdfReader(str(path))
         text = "\n".join(page.extract_text() or "" for page in reader.pages)
-    except PdfParseError:
-        raise
     except Exception as exc:
         raise PdfParseError(f"Kan PDF niet lezen: {exc}") from exc
 
@@ -114,11 +113,8 @@ def _clean_entry(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip(" -–")
 
 
-def parse_pdf(path: str | Path, settings: Settings | None = None) -> list[Shift]:
-    """Parse *path* and return all roster entries, sorted by start time."""
-    p = Path(path)
-    settings = settings or Settings()
-    lines, is_concept = _extract_lines(p)
+def _parse_lines(lines: list[str], is_concept: bool, settings: Settings) -> list[Shift]:
+    """Fallback reader: line based, as in version 1."""
 
     days: dict[str, list[str]] = {}  # yyyy-mm-dd -> entry texts
     order: list[str] = []
@@ -200,7 +196,369 @@ def parse_pdf(path: str | Path, settings: Settings | None = None) -> list[Shift]
                 description=memo_by_key.get((date_iso, entry), ""),
             )
             shift.is_concept = is_concept
+            shift.roster_date = start.date()
             shifts.append(shift)
 
     shifts.sort(key=lambda s: s.start)
     return shifts
+
+
+# ----------------------------------------------------------------------
+# Reading per column (2.0)
+# ----------------------------------------------------------------------
+_FULL_DATE_RE = re.compile(r"^(\d{2})/(\d{2})/(\d{4})$")
+_ONLY_TIME_RANGE_RE = re.compile(r"^\d{1,2}[:.]\d{2}\s*[-–—]\s*\d{1,2}[:.]\d{2}$")
+#: A soort cell is a name followed by exactly one time range.
+_SOORT_RE = re.compile(r"^\S.*?\s\d{1,2}[:.]\d{2}\s*[-–—]\s*\d{1,2}[:.]\d{2}$")
+#: Words of the second line of the header row.
+_HEADER_LINE_2 = {"dienst", "gebied", "snelcode"}
+_PAGE_RE = re.compile(r"Pagina\s+(\d+)\s+van\s+(\d+)", re.IGNORECASE)
+_PERIOD_RE = re.compile(r"(\d{2}/\d{2}/\d{4})\s*-\s*(\d{2}/\d{2}/\d{4})")
+
+#: Known columns, recognised by how their header text starts.
+_COLUMNS = ("dag", "datum", "soort", "tijdstippen", "noodhulp", "project",
+            "activiteit", "resultaat", "ibt", "locatie")
+#: The header row must at least hold these, each as its own piece of text.
+_REQUIRED = {"dag", "datum", "soort", "tijdstippen"}
+#: How a block column shows up in the note of the calendar item.
+_LABELS = {"noodhulp": "Noodhulpdienst", "resultaat": "Resultaatgebied",
+           "ibt": "IBT-snelcode", "locatie": "Locatie"}
+_X_TOL = 3.0  # points a cell may start left of its column header
+_Y_TOL = 2.0  # points within which pieces of text are on the same line
+
+
+@dataclass
+class Roster:
+    """Everything read from one roster pdf."""
+
+    shifts: list[Shift] = field(default_factory=list)
+    is_concept: bool = False
+    #: True when the pdf was read per column; False = fallback reader, in
+    #: which the app may only add items, never change or remove them.
+    per_kolom: bool = False
+    periode: tuple[date, date] | None = None
+    personeelsnummer: str = ""
+    gegenereerd: datetime | None = None
+    #: All pages read and every day of the period present.
+    volledig: bool = False
+    #: Lines the reader could not place, per roster day (None = no day).
+    onbegrepen: dict[date | None, list[str]] = field(default_factory=dict)
+    #: Messages for the user, in plain Dutch.
+    meldingen: list[str] = field(default_factory=list)
+
+    def mag_aanpassen(self, dag: date) -> bool:
+        """May items on *dag* be changed or removed based on this roster?"""
+        return (
+            self.per_kolom
+            and self.volledig
+            and self.periode is not None
+            and self.periode[0] <= dag <= self.periode[1]
+            and None not in self.onbegrepen
+            and dag not in self.onbegrepen
+        )
+
+
+class _GeenKop(Exception):
+    """The header row of the table was not recognised."""
+
+
+@dataclass
+class _Dienst:
+    soort: str
+    blokken: list[dict[str, str]] = field(default_factory=list)
+    memos: list[str] = field(default_factory=list)
+
+
+def _parse_date(text: str) -> date | None:
+    m = _FULL_DATE_RE.match(text.strip())
+    if not m:
+        return None
+    try:
+        return date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+    except ValueError:
+        return None
+
+
+def _page_rows(page) -> list[list[tuple[float, str]]]:
+    """The text of a page as rows (top to bottom) of (x, text) pieces."""
+    pieces: list[tuple[float, float, str]] = []
+
+    def visit(text, cm, tm, font, size):
+        if text.strip():
+            pieces.append((float(tm[4]), float(tm[5]), " ".join(text.split())))
+
+    page.extract_text(visitor_text=visit)
+    pieces.sort(key=lambda p: (-p[1], p[0]))
+    rows: list[list[tuple[float, str]]] = []
+    row_y = None
+    for x, y, text in pieces:
+        if row_y is None or row_y - y > _Y_TOL:
+            rows.append([])
+            row_y = y
+        rows[-1].append((x, text))
+    for row in rows:
+        row.sort(key=lambda piece: piece[0])  # stable: keeps pdf order
+    return rows
+
+
+def _find_header(rows) -> tuple[int, list[tuple[float, str]]] | None:
+    """Index of the header row and its columns as sorted (x, name)."""
+    for i, row in enumerate(rows):
+        cols = []
+        for x, text in row:
+            low = text.casefold()
+            name = next((c for c in _COLUMNS if low.startswith(c)), None)
+            # An unknown header still is a column; its text ends up in the note.
+            cols.append((x, name or text))
+        if _REQUIRED <= {name for _, name in cols}:
+            return i, sorted(cols)
+    return None
+
+
+def _row_text(row) -> str:
+    return " ".join(text for _, text in row)
+
+
+def _cells(row, cols) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for x, text in row:
+        name = cols[0][1]
+        for cx, cname in cols:
+            if cx <= x + _X_TOL:
+                name = cname
+        out[name] = f"{out[name]} {text}" if name in out else text
+    return out
+
+
+def _read_columns(reader, settings: Settings) -> Roster:
+    roster = Roster(per_kolom=True)
+    dagen: dict[date, list[_Dienst]] = {}
+    current: date | None = None
+    cols = None
+    paginas: list[tuple[int, int]] = []
+
+    def onbegrepen(dag: date | None, row) -> None:
+        roster.onbegrepen.setdefault(dag, []).append(_row_text(row))
+
+    for page_no, page in enumerate(reader.pages, start=1):
+        rows = _page_rows(page)
+        found = _find_header(rows)
+        if found is None:
+            if cols is None:
+                raise _GeenKop()
+            body = rows  # continuation page without a header row
+        else:
+            head_idx, cols = found
+            if page_no == 1:
+                _read_report_head(rows[:head_idx], roster)
+            elif head_idx:
+                for row in rows[:head_idx]:
+                    onbegrepen(None, row)
+            body = rows[head_idx + 1:]
+            # Second line of the header ("dienst", "gebied", "snelcode").
+            if body and {t.casefold() for _, t in body[0]} <= _HEADER_LINE_2:
+                body = body[1:]
+
+        first_date_row = True
+        for row in body:
+            text = _row_text(row)
+            m = _PAGE_RE.search(text)
+            if m or text.casefold().startswith("afgedrukt op"):
+                if m:
+                    paginas.append((int(m.group(1)), int(m.group(2))))
+                continue
+            cells = _cells(row, cols)
+            dag_cel = cells.pop("dag", "")
+            datum_cel = cells.pop("datum", "")
+            soort = cells.pop("soort", "")
+
+            if dag_cel.casefold().startswith("memo:"):
+                memo = dag_cel[5:].strip()
+                if datum_cel or soort or cells or current is None or not dagen[current]:
+                    onbegrepen(current, row)
+                elif memo and memo not in dagen[current][-1].memos:
+                    dagen[current][-1].memos.append(memo)
+                continue
+
+            if datum_cel:
+                dag = _parse_date(datum_cel)
+                at_page_top, first_date_row = first_date_row and page_no > 1, False
+                if (dag is None
+                        or dag_cel.casefold() != DAY_NAMES[dag.weekday()]
+                        or (soort and not _SOORT_RE.match(soort))
+                        or (current is not None and dag < current)
+                        # The same date twice is only normal right after a
+                        # page break, where the running day is repeated.
+                        or (dag == current and not at_page_top)):
+                    onbegrepen(current if dag is None or current and dag <= current
+                               else dag, row)
+                    if dag is not None and (current is None or dag > current):
+                        current = dag
+                        dagen.setdefault(dag, [])
+                    continue
+                current = dag
+                diensten = dagen.setdefault(dag, [])
+                # A day that runs over a page break repeats its date and soort
+                # at the top of the next page: same shift, not a second one.
+                if soort and not (at_page_top and diensten
+                                  and diensten[-1].soort == soort):
+                    diensten.append(_Dienst(soort))
+            elif dag_cel or current is None or (soort and not _SOORT_RE.match(soort)):
+                onbegrepen(current, row)
+                continue
+            elif soort:
+                dagen[current].append(_Dienst(soort))
+
+            if not cells:
+                if not (datum_cel or soort):
+                    onbegrepen(current, row)
+                continue
+            if not dagen[current]:
+                onbegrepen(current, row)
+                continue
+            dienst = dagen[current][-1]
+            tijd = cells.get("tijdstippen", "")
+            if tijd and _ONLY_TIME_RANGE_RE.match(tijd):
+                dienst.blokken.append(cells)
+            else:
+                onbegrepen(current, row)
+
+    if not dagen:
+        raise PdfParseError("Geen roosterdagen gevonden in deze PDF.")
+
+    _check_complete(roster, dagen, paginas, len(reader.pages))
+    for dag, regels in roster.onbegrepen.items():
+        waar = f"op {dag:%d-%m-%Y}" if dag else "buiten de dagen"
+        for regel in regels:
+            roster.meldingen.append(f"Regel {waar} niet begrepen: “{regel}”")
+
+    empty_day_is_vrij = bool((settings.rules or {}).get("empty_day_is_vrij", True))
+    for dag in sorted(dagen):
+        start = datetime(dag.year, dag.month, dag.day)
+        diensten = dagen[dag]
+        if empty_day_is_vrij and not diensten and dag not in roster.onbegrepen:
+            diensten = [_Dienst("Vrij")]
+        for dienst in diensten:
+            activiteiten = [m.split(":", 1)[1].strip() for m in dienst.memos
+                            if m.casefold().startswith("activiteit:")]
+            shift = Shift(
+                start=start,
+                end=start + timedelta(days=1),
+                original_summary=dienst.soort,
+                all_day=True,
+                description="\n".join(dienst.memos + [_block_line(b) for b in dienst.blokken]),
+                info=" / ".join(a for a in activiteiten if a),
+            )
+            shift.is_concept = roster.is_concept
+            shift.roster_date = dag
+            roster.shifts.append(shift)
+    roster.shifts.sort(key=lambda s: s.start)
+    return roster
+
+
+def _block_line(blok: dict[str, str]) -> str:
+    """One time block as a line for the note: time, what, and labelled extras."""
+    parts = [blok.get("tijdstippen", "")]
+    parts += [blok[c] for c in ("activiteit", "project") if blok.get(c)]
+    line = " ".join(p for p in parts if p)
+    extras = [f"{_LABELS.get(name, name)}: {value}" for name, value in blok.items()
+              if name not in ("tijdstippen", "activiteit", "project") and value]
+    return " · ".join([line] + extras) if line else " · ".join(extras)
+
+
+def _read_report_head(rows, roster: Roster) -> None:
+    """Period, employee number, generation moment and concept/definitive."""
+    for row in rows:
+        text = _row_text(row)
+        low = text.casefold()
+        if "concept" in low:
+            roster.is_concept = True
+        if low.startswith("periode"):
+            m = _PERIOD_RE.search(text)
+            first = _parse_date(m.group(1)) if m else None
+            last = _parse_date(m.group(2)) if m else None
+            if first and last and first <= last:
+                roster.periode = (first, last)
+        elif low.startswith("medewerker:"):
+            # Only a number directly after "Medewerker:" counts; without it
+            # the app cannot tell whose items are whose and will only add.
+            m = re.match(r"medewerker:\s*(\d{4,12})\b", low)
+            roster.personeelsnummer = m.group(1) if m else ""
+        elif "generatiedatum" in low:
+            m = re.search(r"(\d{2})/(\d{2})/(\d{4})", text)
+            tm = re.search(r"\b(\d{1,2}):(\d{2})\b", text)
+            if m:
+                try:
+                    roster.gegenereerd = datetime(
+                        int(m.group(3)), int(m.group(2)), int(m.group(1)),
+                        int(tm.group(1)) if tm else 0, int(tm.group(2)) if tm else 0)
+                except ValueError:
+                    pass
+
+
+def _check_complete(roster: Roster, dagen, paginas, page_count: int) -> None:
+    """Were all pages read and is every day of the period present?"""
+    problemen = []
+    totals = {total for _, total in paginas}
+    if (len(paginas) != page_count or totals != {page_count}
+            or [n for n, _ in paginas] != list(range(1, page_count + 1))):
+        problemen.append("de paginanummering klopt niet (ontbreekt er een pagina?)")
+    if roster.periode is None:
+        problemen.append("de periode staat niet in de kop")
+    else:
+        first, last = roster.periode
+        if (last - first).days > 400:
+            problemen.append("de periode in de kop is onwaarschijnlijk lang")
+        else:
+            verwacht = {first + timedelta(days=i) for i in range((last - first).days + 1)}
+            missend = sorted(verwacht - set(dagen))
+            if missend:
+                problemen.append(
+                    f"{len(missend)} dag(en) van de periode ontbreken, "
+                    f"waaronder {missend[0]:%d-%m-%Y}")
+            # BVCM lists a rest block that runs past the last day under the
+            # day after the period. That day belongs to the next roster.
+            for dag in set(dagen) - verwacht:
+                del dagen[dag]
+                if dag in roster.onbegrepen:
+                    roster.onbegrepen.setdefault(None, []).extend(roster.onbegrepen.pop(dag))
+    roster.volledig = not problemen
+    if problemen:
+        roster.meldingen.append(
+            "Dit rooster lijkt niet compleet: " + "; ".join(problemen)
+            + ". De app voegt alleen toe en past niets aan.")
+
+
+def read_roster(path: str | Path, settings: Settings | None = None) -> Roster:
+    """Read the roster pdf at *path*, per column when the header row is
+    recognised and with the line-based fallback reader otherwise."""
+    settings = settings or Settings()
+    try:
+        from pypdf import PdfReader
+    except ImportError as exc:  # pragma: no cover
+        raise PdfParseError("PDF-ondersteuning ontbreekt (pypdf niet geïnstalleerd).") from exc
+    try:
+        reader = PdfReader(str(path))
+        lines, is_concept = _extract_lines(reader)
+        try:
+            return _read_columns(reader, settings)
+        except _GeenKop:
+            pass
+    except PdfParseError:
+        raise
+    except Exception as exc:
+        raise PdfParseError(f"Kan PDF niet lezen: {exc}") from exc
+    return Roster(
+        shifts=_parse_lines(lines, is_concept, settings),
+        is_concept=is_concept,
+        meldingen=[
+            "De kolommen van dit rooster zijn niet herkend. De app leest het "
+            "op de oude manier en voegt alleen toe; er wordt niets aangepast "
+            "of verwijderd. Controleer het resultaat extra goed."
+        ],
+    )
+
+
+def parse_pdf(path: str | Path, settings: Settings | None = None) -> list[Shift]:
+    """Parse *path* and return all roster entries, sorted by start time."""
+    return read_roster(path, settings).shifts

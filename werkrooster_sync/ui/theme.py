@@ -1,189 +1,155 @@
-"""Palette-driven theming.
+"""Het uiterlijk van de app: één donker thema in de kleuren van het ontwerp.
 
-All colors live in a palette; :func:`apply_palette` swaps the active palette
-and regenerates the QSS. Widgets read the module-level constants at
-construction time, so build windows *after* applying a palette.
-
-Palettes:
-- ``donker``       — the original dark look
-- ``glas-donker``  — liquid-glass dark: deep gradient, translucent cards
-- ``glas-licht``   — liquid-glass light: airy gradient, frosted white cards
-- ``apple``        — macOS classic: light grey, white cards, blue accent
+Geen kleurverloop, geen gekleurde linkerrand op kaarten, geen emoji.
+Een lettertype in ``werkrooster_sync/fonts/`` (.ttf of .otf) wordt bij de
+start geladen, zodat de app er op Windows en Mac hetzelfde uitziet; zonder
+zo'n bestand gebruikt de app het systeemlettertype.
 """
 from __future__ import annotations
 
+import sys
+import tempfile
+from pathlib import Path
+
 from ..core.models import ShiftType
 
-#: Colors per shift type (consistent across palettes = brand language).
+BG = WINDOW_BG = "#0E1117"
+CARD = "#171C28"
+CARD_HOVER = "#1C2232"
+BORDER = "#2A3245"
+INPUT_BG = "#0E1117"
+TEXT = "#EEF1F7"
+TEXT_DIM = "#9AA3B8"
+ACCENT = "#8E9BFF"
+ACCENT_HOVER = "#A3AEFF"
+ACCENT_PRESSED = "#7A88F0"
+ACCENT_TEXT = "#0B0E1A"
+#: Kaart die gekozen is (iets blauwer dan een gewone kaart).
+SELECTED = "#1C2140"
+
+OCHTEND = "#FFB340"
+LAAT = "#FF8A5C"
+NACHT = "#A99CFF"
+VRIJ = OK = "#34C759"
+AFSPRAAK = "#30C8C9"
+WARN = "#FFB340"
+DANGER = "#FF6B6B"
+SWITCH_OFF = BORDER
+STEP_BG = CARD
+
+#: Kleur per soort (de dienstsoorten zelf hebben een eigen kleur in de instellingen).
 SHIFT_COLORS: dict[ShiftType, str] = {
-    ShiftType.VRIJ: "#34C759",
-    ShiftType.OCHTEND: "#FFB340",
-    ShiftType.LAAT: "#FF7A45",
-    ShiftType.NACHT: "#8B7CF6",
-    ShiftType.DIENST: "#3E9BF0",
-    ShiftType.AFSPRAAK: "#30C8C9",
-    ShiftType.NEGEREN: "#8A8F9E",
+    ShiftType.VRIJ: VRIJ,
+    ShiftType.OCHTEND: OCHTEND,
+    ShiftType.LAAT: LAAT,
+    ShiftType.NACHT: NACHT,
+    ShiftType.DIENST: ACCENT,
+    ShiftType.AFSPRAAK: AFSPRAAK,
+    ShiftType.NEGEREN: TEXT_DIM,
 }
 
-PALETTES: dict[str, dict[str, str]] = {
-    "donker": {
-        "ACCENT": "#6C7CFF",
-        "ACCENT_HOVER": "#8593FF",
-        "ACCENT_PRESSED": "#5563E8",
-        "BG": "#0E1117",
-        "WINDOW_BG": "#0E1117",
-        "CARD": "#161B26",
-        "CARD_HOVER": "#1B2130",
-        "BORDER": "#252C3D",
-        "INPUT_BG": "#0E1117",
-        "TEXT": "#E8EBF2",
-        "TEXT_DIM": "#8B93A7",
-        "DANGER": "#F26D6D",
-        "OK": "#4FD1A5",
-        "WARN": "#F5C15D",
-        "SWITCH_OFF": "#3A4256",
-        "STEP_BG": "#1A2030",
-        "SHADOW": "transparent",
-    },
-    "glas-donker": {
-        "ACCENT": "#7C8CFF",
-        "ACCENT_HOVER": "#93A0FF",
-        "ACCENT_PRESSED": "#6474F0",
-        "BG": "#0B0E1A",
-        "WINDOW_BG": (
-            "qlineargradient(x1:0, y1:0, x2:1, y2:1, "
-            "stop:0 #10142B, stop:0.5 #0B0E1A, stop:1 #1A1030)"
-        ),
-        "CARD": "rgba(255, 255, 255, 0.055)",
-        "CARD_HOVER": "rgba(255, 255, 255, 0.09)",
-        "BORDER": "rgba(255, 255, 255, 0.13)",
-        "INPUT_BG": "rgba(0, 0, 0, 0.35)",
-        "TEXT": "#F2F4FA",
-        "TEXT_DIM": "#9AA2B8",
-        "DANGER": "#FF6B6B",
-        "OK": "#34C759",
-        "WARN": "#FFC64D",
-        "SWITCH_OFF": "rgba(255, 255, 255, 0.18)",
-        "STEP_BG": "rgba(255, 255, 255, 0.08)",
-        "SHADOW": "transparent",
-    },
-    "glas-licht": {
-        "ACCENT": "#4A5BFF",
-        "ACCENT_HOVER": "#6272FF",
-        "ACCENT_PRESSED": "#3A49E0",
-        "BG": "#EAEDF6",
-        "WINDOW_BG": (
-            "qlineargradient(x1:0, y1:0, x2:1, y2:1, "
-            "stop:0 #EDF1FB, stop:0.5 #E7EAF5, stop:1 #F0EAF8)"
-        ),
-        "CARD": "rgba(255, 255, 255, 0.68)",
-        "CARD_HOVER": "rgba(255, 255, 255, 0.85)",
-        "BORDER": "rgba(20, 30, 60, 0.10)",
-        "INPUT_BG": "rgba(255, 255, 255, 0.85)",
-        "TEXT": "#1C2333",
-        "TEXT_DIM": "#6A7286",
-        "DANGER": "#E5484D",
-        "OK": "#34C759",
-        "WARN": "#C77D0A",
-        "SWITCH_OFF": "rgba(20, 30, 60, 0.18)",
-        "STEP_BG": "rgba(255, 255, 255, 0.80)",
-        "SHADOW": "rgba(30, 40, 80, 0.06)",
-    },
-    "apple": {
-        "ACCENT": "#007AFF",
-        "ACCENT_HOVER": "#2E90FF",
-        "ACCENT_PRESSED": "#0063D1",
-        "BG": "#F5F5F7",
-        "WINDOW_BG": "#F5F5F7",
-        "CARD": "#FFFFFF",
-        "CARD_HOVER": "#F9F9FB",
-        "BORDER": "#E2E2E8",
-        "INPUT_BG": "#FFFFFF",
-        "TEXT": "#1D1D1F",
-        "TEXT_DIM": "#7A7A82",
-        "DANGER": "#FF3B30",
-        "OK": "#34C759",
-        "WARN": "#B25000",
-        "SWITCH_OFF": "#D6D6DC",
-        "STEP_BG": "#FFFFFF",
-        "SHADOW": "rgba(0, 0, 0, 0.04)",
-    },
-}
+#: Familienaam van het meegeleverde lettertype ("" = systeemlettertype).
+FONT_FAMILY = ""
 
-#: The active palette name; changed via apply_palette().
-ACTIVE = "glas-donker"
 
-# Module-level color constants, filled in by apply_palette() below.
-ACCENT = ACCENT_HOVER = ACCENT_PRESSED = ""
-BG = WINDOW_BG = CARD = CARD_HOVER = BORDER = INPUT_BG = ""
-TEXT = TEXT_DIM = DANGER = OK = WARN = SWITCH_OFF = STEP_BG = SHADOW = ""
-QSS = ""
+def kleur_voor(settings, sleutel: str) -> str:
+    """Kleur van een soort: de eigen kleur van een dienstsoort, anders vast."""
+    for d in settings.dienstsoorten:
+        if d.get("id") == sleutel and d.get("kleur"):
+            return d["kleur"]
+    try:
+        return SHIFT_COLORS[ShiftType(sleutel)]
+    except ValueError:
+        return ACCENT
+
+
+def fonts_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)) / "fonts"
+    return Path(__file__).resolve().parents[1] / "fonts"
+
+
+def laad_lettertype() -> str:
+    """Laad de lettertypen uit de map fonts/ (na het maken van de QApplication).
+    Geeft de familienaam terug, of "" als er geen lettertype is meegeleverd."""
+    global FONT_FAMILY, QSS
+    from PySide6.QtGui import QFontDatabase
+
+    families: list[str] = []
+    map_ = fonts_dir()
+    if map_.is_dir():
+        for f in sorted(map_.iterdir()):
+            if f.suffix.lower() in (".ttf", ".otf"):
+                fid = QFontDatabase.addApplicationFont(str(f))
+                if fid >= 0:
+                    families += QFontDatabase.applicationFontFamilies(fid)
+    FONT_FAMILY = families[0] if families else ""
+    QSS = _build_qss()
+    return FONT_FAMILY
+
+
+def _pijl() -> str:
+    """Pijltje voor keuzelijsten. Qt kan in een stylesheet alleen een plaatje
+    uit een bestand tonen; dit schrijven we één keer in de tijdelijke map, zodat
+    het ook in de gebouwde app werkt zonder extra meegeleverde bestanden."""
+    pad = Path(tempfile.gettempdir()) / "werkroostersync-pijl.svg"
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" width="12" height="8">'
+           f'<path d="M1 1.5 6 6.5 11 1.5" fill="none" stroke="{TEXT_DIM}" '
+           'stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>')
+    try:
+        if not pad.exists() or pad.read_text() != svg:
+            pad.write_text(svg)
+    except OSError:
+        return ""
+    return pad.as_posix()
 
 
 def _build_qss() -> str:
+    familie = f'"{FONT_FAMILY}", ' if FONT_FAMILY else ""
     return f"""
 * {{
-    font-family: "SF Pro Text", "Segoe UI Variable", "Segoe UI", -apple-system, sans-serif;
+    font-family: {familie}"SF Pro Text", "Segoe UI Variable", "Segoe UI", -apple-system, sans-serif;
     outline: none;
 }}
-QMainWindow, QDialog {{
-    background: {WINDOW_BG};
-}}
-QWidget {{
-    color: {TEXT};
-    font-size: 14px;
-}}
+QMainWindow, QDialog {{ background: {BG}; }}
+QWidget {{ color: {TEXT}; font-size: 14px; }}
+QStackedWidget, QScrollArea, QScrollArea > QWidget > QWidget {{ background: transparent; }}
 QLabel {{ background: transparent; }}
-QLabel#appTitle {{
-    font-size: 26px;
-    font-weight: 700;
-    color: {TEXT};
-}}
-QLabel#appSubtitle {{
-    font-size: 14px;
-    color: {TEXT_DIM};
-}}
+QLabel#appTitle {{ font-size: 24px; font-weight: 700; }}
+QLabel#appSubtitle {{ font-size: 14px; color: {TEXT_DIM}; }}
+QLabel#pageTitle {{ font-size: 34px; font-weight: 800; }}
+QLabel#bigTitle {{ font-size: 28px; font-weight: 800; }}
+QLabel#lead {{ font-size: 16px; color: {TEXT_DIM}; }}
 QLabel#sectionTitle {{
-    font-size: 13px;
-    font-weight: 600;
-    color: {TEXT_DIM};
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    font-size: 12px; font-weight: 700; color: {TEXT_DIM}; letter-spacing: 1px;
 }}
 QLabel#statusOk {{ color: {OK}; }}
 QLabel#statusError {{ color: {DANGER}; }}
 QLabel#statusDim {{ color: {TEXT_DIM}; }}
 QLabel#statusWarn {{ color: {WARN}; }}
+QLabel#link {{ color: {ACCENT}; text-decoration: underline; }}
 
 QFrame#card {{
     background-color: {CARD};
     border: 1px solid {BORDER};
     border-radius: 16px;
 }}
-QFrame#stepHeader {{
-    background-color: {STEP_BG};
-    border: 1px solid {BORDER};
-    border-left: 4px solid {ACCENT};
-    border-radius: 12px;
-}}
+QFrame#card QLabel {{ border: none; }}
 QFrame#warnBox {{
-    background-color: rgba(245, 193, 93, 0.12);
-    border: 1px solid rgba(245, 193, 93, 0.45);
-    border-radius: 10px;
+    background-color: {CARD};
+    border: 1px solid {WARN};
+    border-radius: 14px;
 }}
-QFrame#warnBox QLabel {{
-    color: {WARN};
-    background: transparent;
-    border: none;
-}}
+QFrame#warnBox QLabel {{ border: none; }}
 QFrame#dangerBox {{
-    background-color: rgba(229, 72, 77, 0.07);
-    border: 1px solid rgba(229, 72, 77, 0.35);
-    border-radius: 10px;
+    background-color: {CARD};
+    border: 1px solid {DANGER};
+    border-radius: 14px;
 }}
+QFrame#dangerBox QLabel {{ border: none; }}
 
 QPushButton {{
-    background-color: {CARD};
+    background-color: transparent;
     border: 1px solid {BORDER};
     border-radius: 12px;
     padding: 10px 20px;
@@ -191,73 +157,78 @@ QPushButton {{
     color: {TEXT};
 }}
 QPushButton:hover {{ background-color: {CARD_HOVER}; border-color: {ACCENT}; }}
-QPushButton:pressed {{ background-color: {BORDER}; }}
+QPushButton:pressed {{ background-color: {CARD}; }}
 QPushButton:disabled {{ color: {TEXT_DIM}; border-color: {BORDER}; }}
 
 QPushButton#primary {{
-    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-        stop:0 {ACCENT_HOVER}, stop:1 {ACCENT});
+    background-color: {ACCENT};
     border: none;
-    color: white;
-    font-size: 16px;
+    color: {ACCENT_TEXT};
+    font-size: 17px;
     font-weight: 700;
     padding: 16px 28px;
     border-radius: 14px;
 }}
 QPushButton#primary:hover {{ background-color: {ACCENT_HOVER}; }}
 QPushButton#primary:pressed {{ background-color: {ACCENT_PRESSED}; }}
-QPushButton#primary:disabled {{ background: {BORDER}; color: {TEXT_DIM}; }}
+QPushButton#primary:disabled {{ background-color: {BORDER}; color: {TEXT_DIM}; }}
 
-QPushButton#secondary {{
-    font-size: 15px;
-    padding: 14px 24px;
-    border-radius: 14px;
+QPushButton#secondary {{ font-size: 15px; padding: 12px 22px; border-radius: 12px; }}
+QPushButton#big {{ font-size: 16px; padding: 15px 26px; border-radius: 14px; }}
+QPushButton#link {{
+    border: none; background: transparent; color: {ACCENT};
+    text-decoration: underline; padding: 4px; font-weight: 500;
 }}
-QPushButton#danger {{
-    border-color: {DANGER};
-    color: {DANGER};
+QPushButton#link:hover {{ color: {ACCENT_HOVER}; }}
+QPushButton#dashed {{
+    border: 1px dashed {BORDER}; color: {ACCENT}; padding: 14px; border-radius: 14px;
 }}
-QPushButton#danger:hover {{ background-color: rgba(229, 72, 77, 0.12); }}
+QPushButton#danger {{ border-color: {DANGER}; color: {DANGER}; }}
+QPushButton#small {{ padding: 6px 14px; border-radius: 10px; font-size: 13px; }}
+QPushButton#smallPrimary {{
+    padding: 6px 14px; border-radius: 10px; font-size: 13px;
+    background-color: {ACCENT}; color: {ACCENT_TEXT}; border: none;
+}}
 
-QLineEdit, QComboBox, QSpinBox, QDateEdit {{
+QLineEdit, QComboBox, QSpinBox, QDateEdit, QTextEdit, QPlainTextEdit {{
     background-color: {INPUT_BG};
     border: 1px solid {BORDER};
     border-radius: 10px;
     padding: 8px 12px;
     color: {TEXT};
     selection-background-color: {ACCENT};
+    selection-color: {ACCENT_TEXT};
 }}
-QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDateEdit:focus {{ border-color: {ACCENT}; }}
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QTextEdit:focus,
+QPlainTextEdit:focus {{ border-color: {ACCENT}; }}
 QComboBox::drop-down {{ border: none; width: 28px; }}
 QComboBox::down-arrow {{
-    image: none;
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
-    border-top: 6px solid {TEXT_DIM};
+    image: url("{_pijl()}");
+    width: 12px;
+    height: 8px;
     margin-right: 10px;
 }}
 QComboBox QAbstractItemView {{
-    background-color: {CARD if ACTIVE == "donker" else "#FFFFFF" if ACTIVE in ("glas-licht", "apple") else "#1A1F33"};
+    background-color: {CARD};
     border: 1px solid {BORDER};
-    border-radius: 10px;
     selection-background-color: {ACCENT};
-    selection-color: white;
+    selection-color: {ACCENT_TEXT};
     color: {TEXT};
 }}
-QDateEdit::drop-down {{ border: none; width: 24px; }}
-QCalendarWidget QWidget {{ background-color: {CARD}; color: {TEXT}; }}
-QCalendarWidget QAbstractItemView {{
-    background-color: {CARD};
-    selection-background-color: {ACCENT};
-    selection-color: white;
+
+QCheckBox {{ spacing: 10px; background: transparent; }}
+QCheckBox::indicator {{
+    width: 20px; height: 20px; border-radius: 5px;
+    border: 1px solid {BORDER}; background: {INPUT_BG};
 }}
+QCheckBox::indicator:checked {{ background: {ACCENT}; border-color: {ACCENT}; }}
 
 QMessageBox {{ background-color: {CARD}; }}
 QMessageBox QLabel {{ color: {TEXT}; font-size: 14px; }}
 
 QTabWidget::pane {{
     border: 1px solid {BORDER};
-    border-radius: 12px;
+    border-radius: 14px;
     top: -1px;
     background-color: {CARD};
 }}
@@ -270,55 +241,27 @@ QTabBar::tab {{
 }}
 QTabBar::tab:selected {{ color: {TEXT}; border-bottom: 2px solid {ACCENT}; }}
 
-QListWidget, QTableWidget {{
-    background-color: {CARD};
-    border: 1px solid {BORDER};
-    border-radius: 12px;
-    padding: 6px;
-}}
-QListWidget::item {{
-    padding: 8px 10px;
-    border-radius: 8px;
-}}
-QListWidget::item:selected {{ background-color: {CARD_HOVER}; color: {TEXT}; }}
-
 QProgressBar {{
     background-color: {CARD};
     border: 1px solid {BORDER};
-    border-radius: 8px;
-    height: 10px;
+    border-radius: 6px;
+    max-height: 10px;
     text-align: center;
     color: transparent;
 }}
-QProgressBar::chunk {{ background-color: {ACCENT}; border-radius: 7px; }}
+QProgressBar::chunk {{ background-color: {ACCENT}; border-radius: 5px; }}
 
-QScrollBar:vertical {{
-    background: transparent; width: 10px; margin: 2px;
-}}
-QScrollBar::handle:vertical {{
-    background: {BORDER}; border-radius: 5px; min-height: 30px;
-}}
+QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
+QScrollBar::handle:vertical {{ background: {BORDER}; border-radius: 5px; min-height: 30px; }}
 QScrollBar::handle:vertical:hover {{ background: {TEXT_DIM}; }}
 QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; }}
+QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
 
 QToolTip {{
-    background-color: {CARD};
-    color: {TEXT};
-    border: 1px solid {BORDER};
-    padding: 6px;
-    border-radius: 6px;
+    background-color: {CARD}; color: {TEXT};
+    border: 1px solid {BORDER}; padding: 6px; border-radius: 6px;
 }}
 """
 
 
-def apply_palette(name: str) -> None:
-    """Activate a palette and regenerate the QSS. Build windows afterwards."""
-    global ACTIVE, QSS
-    palette = PALETTES.get(name) or PALETTES["donker"]
-    ACTIVE = name if name in PALETTES else "donker"
-    for key, value in palette.items():
-        globals()[key] = value
-    QSS = _build_qss()
-
-
-apply_palette(ACTIVE)
+QSS = _build_qss()

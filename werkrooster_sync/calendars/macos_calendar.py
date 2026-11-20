@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from ..core.models import Shift
-from .base import CalendarBackend, CalendarError
+from .base import AgendaItem, CalendarBackend, CalendarError
 
 _SEP = "␟"  # unit separator, will never occur in event titles
 _ROW = "␞"
@@ -33,7 +33,43 @@ def _date_decl(var: str, dt: datetime) -> str:
     )
 
 
+#: Agenda op macOS 27 weigert ``calendarIdentifier`` (fout -10000). Dan zoekt
+#: deze hulp de agenda op naam; een kenmerk uit een oudere macOS werkt zo ook.
+_AGENDA_OPZOEKEN = (
+    "on wsAgenda(k, n)\n"
+    '  tell application "Calendar"\n'
+    "    try\n"
+    "      return first calendar whose calendarIdentifier is k\n"
+    "    end try\n"
+    "    return calendar n\n"
+    "  end tell\n"
+    "end wsAgenda\n"
+)
+
+
+def _eind_voor_agenda(item: AgendaItem) -> datetime:
+    """Agenda wil bij een hele-dag-item de laatste dag zelf, niet "de dag erna
+    om 0:00" (dat maakt hij soms één, soms twee dagen). De app rekent intern
+    met een einde dat net buiten het item valt."""
+    if item.end <= item.start:
+        return item.start
+    if item.all_day:
+        return max(item.start, item.end - timedelta(days=1))
+    return item.end
+
+
+def _eind_uit_agenda(start: datetime, eind: datetime, all_day: bool) -> datetime:
+    """Omgekeerd: Agenda geeft 23:59:59 op de laatste dag terug."""
+    if all_day and eind.time() != datetime.min.time():
+        return datetime(eind.year, eind.month, eind.day) + timedelta(days=1)
+    if all_day and eind <= start:
+        return start + timedelta(days=1)
+    return eind
+
+
 def _run(script: str, timeout: int = 120) -> str:
+    if "wsAgenda(" in script:
+        script = _AGENDA_OPZOEKEN + script
     try:
         proc = subprocess.run(
             ["osascript", "-e", script],
@@ -92,7 +128,7 @@ class MacCalendarBackend(CalendarBackend):
         if shift.reminder_minutes is not None:
             alarm = (
                 "tell newEvent to make new display alarm at end with properties "
-                f"{{trigger interval:-{int(shift.reminder_minutes)}}}\n"
+                f"{{trigger interval:-{abs(int(shift.reminder_minutes))}}}\n"
             )
 
         end = shift.end if shift.end > shift.start else shift.start
@@ -109,119 +145,155 @@ class MacCalendarBackend(CalendarBackend):
         _run(script)
 
     # ------------------------------------------------------------------
-    def _scan(
-        self, calendar_name: str, start: datetime, end: datetime, with_uid: bool = False
-    ) -> list[tuple[str, str, str, bool, str]]:
-        """Rows of (title_casefold, stamp, sync_id, concept, uid) in range."""
-        if not calendar_name:
-            return []
+    # Version 2: complete items, addressed by the calendar's own ids
+    # ------------------------------------------------------------------
+    def calendars(self) -> list[tuple[str, str]]:
         out = _run(
-            self._range_script(calendar_name, start, end, with_uid=with_uid),
-            timeout=300,
+            'set out to ""\n'
+            'tell application "Calendar"\n'
+            "  repeat with c in calendars\n"
+            "    set k to \"\"\n"
+            "    try\n"
+            "      set k to calendarIdentifier of c\n"
+            "    end try\n"
+            f'    set out to out & (name of c) & "{_SEP}" & k & "{_ROW}"\n'
+            "  end repeat\n"
+            "end tell\n"
+            "return out"
         )
-        rows: list[tuple[str, str, str, bool, str]] = []
+        result = []
         for row in out.split(_ROW):
             parts = row.split(_SEP)
-            if len(parts) >= 4:
-                title = parts[0].strip().casefold()
-                concept = parts[3].strip() == "1" or title.endswith("(concept)")
-                uid = parts[4].strip() if len(parts) >= 5 else ""
-                rows.append((title, parts[1].strip(), parts[2].strip(), concept, uid))
-        return rows
+            if len(parts) == 2 and parts[0].strip():
+                naam = parts[0].strip()
+                # Geen eigen nummer van Agenda (macOS 27): dan de naam als
+                # vast nummer, anders kan de app nooit bijwerken of verwijderen.
+                result.append((naam, parts[1].strip() or f"naam:{naam}"))
+        return result
 
-    def existing_keys_list(
-        self, calendar_name: str, start: datetime, end: datetime
-    ) -> list[tuple[str, str]]:
-        return [(t, s) for t, s, _m, _c, _u in self._scan(calendar_name, start, end)]
+    def _cal(self, name: str, key: str) -> str:
+        """AppleScript reference to the calendar: by fixed id when known."""
+        if key:
+            return f'(my wsAgenda("{_esc(key)}", "{_esc(name)}"))'
+        if not name:
+            raise CalendarError("Geen agenda gekozen. Kies eerst een agenda in Instellingen.")
+        return f'calendar "{_esc(name)}"'
 
-    def scan_events(self, calendar_name: str, start: datetime, end: datetime):
-        from .base import ExistingEvent
+    def read_items(self, name: str, key: str, start: datetime, end: datetime) -> list[AgendaItem]:
+        def stamp(var: str) -> str:
+            return (f"((year of {var}) as text) & \"-\" & ((month of {var}) as integer) & \"-\" & "
+                    f"(day of {var}) & \"-\" & (time of {var})")
 
-        return [
-            ExistingEvent(t, s, m, c)
-            for t, s, m, c, _u in self._scan(calendar_name, start, end)
-        ]
-
-    def _range_script(
-        self, calendar_name: str, start: datetime, end: datetime, with_uid: bool
-    ) -> str:
-        uid_part = ' & "' + _SEP + '" & (uid of e)' if with_uid else ""
-        return (
-            _date_decl("d1", start)
-            + _date_decl("d2", end)
-            + f'set out to ""\n'
-            f'set tag to "[WerkroosterSync:"\n'
-            f'tell application "Calendar"\n'
-            f'  tell calendar "{_esc(calendar_name)}"\n'
-            f"    set evs to every event whose start date ≥ d1 and start date ≤ d2\n"
-            f"    repeat with e in evs\n"
-            f"      set sd to start date of e\n"
-            f"      set mm to (month of sd as integer)\n"
-            f'      set mmT to text -2 thru -1 of ("0" & mm)\n'
-            f'      set ddT to text -2 thru -1 of ("0" & (day of sd))\n'
-            f'      set hhT to text -2 thru -1 of ("0" & (hours of sd))\n'
-            f'      set miT to text -2 thru -1 of ("0" & (minutes of sd))\n'
-            f"      set stamp to ((year of sd) as text) & mmT & ddT & hhT & miT\n"
-            f'      set syncId to ""\n'
-            f'      set conceptFlag to "0"\n'
-            f"      try\n"
-            f"        set desc to (description of e) as text\n"
-            f"        if desc contains tag then\n"
-            f"          set AppleScript's text item delimiters to tag\n"
-            f"          set part to text item 2 of desc\n"
-            f'          set AppleScript\'s text item delimiters to ""\n'
-            f"          set syncId to text 1 thru 12 of part\n"
-            f"        end if\n"
-            f'        if desc contains "[WerkroosterSync-concept]" then set conceptFlag to "1"\n'
-            f"      end try\n"
-            f'      set AppleScript\'s text item delimiters to ""\n'
-            f'      set out to out & (summary of e) & "{_SEP}" & stamp & "{_SEP}" & syncId & "{_SEP}" & conceptFlag{uid_part} & "{_ROW}"\n'
-            f"    end repeat\n"
-            f"  end tell\n"
-            f"end tell\n"
-            f"return out"
+        out = _run(
+            _date_decl("d1", start) + _date_decl("d2", end)
+            + 'set out to ""\n'
+            'tell application "Calendar"\n'
+            f"  tell {self._cal(name, key)}\n"
+            "    set evs to every event whose start date ≥ d1 and start date ≤ d2\n"
+            "    repeat with e in evs\n"
+            "      set sd to start date of e\n"
+            "      set ed to end date of e\n"
+            '      set desc to ""\n'
+            '      set loc to ""\n'
+            "      try\n"
+            "        set desc to (description of e) as text\n"
+            "      end try\n"
+            "      try\n"
+            "        set loc to (location of e) as text\n"
+            "      end try\n"
+            '      if desc is "missing value" then set desc to ""\n'
+            '      if loc is "missing value" then set loc to ""\n'
+            '      set ad to "0"\n'
+            '      if allday event of e then set ad to "1"\n'
+            f'      set out to out & (uid of e) & "{_SEP}" & (summary of e) & "{_SEP}" & {stamp("sd")} '
+            f'& "{_SEP}" & {stamp("ed")} & "{_SEP}" & ad & "{_SEP}" & loc & "{_SEP}" & desc & "{_ROW}"\n'
+            "    end repeat\n"
+            "  end tell\n"
+            "end tell\n"
+            "return out",
+            timeout=300,
         )
 
-    # ------------------------------------------------------------------
-    def remove_duplicates(self, calendar_name: str, start: datetime, end: datetime) -> int:
-        rows = self._scan(calendar_name, start, end, with_uid=True)
-        seen: set[tuple[str, str]] = set()
-        surplus_uids: list[str] = []
-        for title, stamp, _marker, _concept, uid in rows:
-            key = (title, stamp)
-            if key in seen:
-                surplus_uids.append(uid)
-            else:
-                seen.add(key)
+        def moment(text: str) -> datetime:
+            y, m, d, secs = (int(float(x)) for x in text.strip().split("-"))
+            return datetime(y, m, d) + timedelta(seconds=secs)
 
-        self._delete_by_uids(calendar_name, surplus_uids)
-        return len(surplus_uids)
+        items = []
+        for row in out.split(_ROW):
+            parts = row.split(_SEP)
+            if len(parts) != 7:
+                if row.strip():
+                    # A title or note containing our separator: never guess.
+                    raise CalendarError("Een agenda-item kon niet gelezen worden.")
+                continue
+            try:
+                hele_dag = parts[4].strip() == "1"
+                begin = moment(parts[2])
+                items.append(AgendaItem(
+                    native_id=parts[0].strip(), title=parts[1],
+                    start=begin, end=_eind_uit_agenda(begin, moment(parts[3]), hele_dag),
+                    all_day=hele_dag, location=parts[5], notes=parts[6],
+                ))
+            except ValueError as exc:
+                raise CalendarError(f"Een agenda-item kon niet gelezen worden: {exc}") from exc
+        return items
 
-    def _delete_by_uids(self, calendar_name: str, uids: list[str]) -> None:
-        for uid in uids:
-            _run(
-                f'tell application "Calendar"\n'
-                f'  tell calendar "{_esc(calendar_name)}"\n'
-                f'    delete (every event whose uid is "{_esc(uid)}")\n'
-                f"  end tell\n"
-                f"end tell"
-            )
+    def add_item(self, name: str, key: str, item: AgendaItem) -> str:
+        props = [f'summary:"{_esc(item.title)}"', "start date:d1", "end date:d2"]
+        if item.all_day:
+            props.append("allday event:true")
+        if item.location:
+            props.append(f'location:"{_esc(item.location)}"')
+        if item.notes:
+            props.append(f'description:"{_esc(item.notes)}"')
+        alarm = ""
+        if item.reminder_minutes is not None:
+            alarm = ("    tell e to make new display alarm at end with properties "
+                     f"{{trigger interval:-{abs(int(item.reminder_minutes))}}}\n")
+        end = _eind_voor_agenda(item)
+        uid = _run(
+            _date_decl("d1", item.start) + _date_decl("d2", end)
+            + 'tell application "Calendar"\n'
+            f"  tell {self._cal(name, key)}\n"
+            f"    set e to make new event with properties {{{', '.join(props)}}}\n"
+            + alarm
+            + "    return uid of e\n"
+            "  end tell\n"
+            "end tell"
+        )
+        if not uid:
+            raise CalendarError("Agenda gaf geen nummer terug voor het nieuwe item.")
+        return uid
 
-    # ------------------------------------------------------------------
-    def count_synced(self, calendar_name: str, start: datetime, end: datetime) -> int:
-        rows = self._scan(calendar_name, start, end)
-        return sum(1 for _t, _s, marker, _c, _u in rows if marker)
+    def update_item(self, name: str, key: str, item: AgendaItem) -> None:
+        end = _eind_voor_agenda(item)
+        # Times first and in an order that never puts the start after the
+        # end; the note with the marker goes last, so an interrupted update
+        # is recognisable as unfinished.
+        _run(
+            _date_decl("d1", item.start) + _date_decl("d2", end)
+            + 'tell application "Calendar"\n'
+            f"  tell {self._cal(name, key)}\n"
+            f'    set e to first event whose uid is "{_esc(item.native_id)}"\n'
+            f"    set allday event of e to {'true' if item.all_day else 'false'}\n"
+            "    if d1 > (end date of e) then\n"
+            "      set end date of e to d2\n"
+            "      set start date of e to d1\n"
+            "    else\n"
+            "      set start date of e to d1\n"
+            "      set end date of e to d2\n"
+            "    end if\n"
+            f'    set summary of e to "{_esc(item.title)}"\n'
+            f'    set description of e to "{_esc(item.notes)}"\n'
+            "  end tell\n"
+            "end tell"
+        )
 
-    def remove_synced(self, calendar_name: str, start: datetime, end: datetime) -> int:
-        rows = self._scan(calendar_name, start, end, with_uid=True)
-        uids = [uid for _t, _s, marker, _c, uid in rows if marker and uid]
-        self._delete_by_uids(calendar_name, uids)
-        return len(uids)
-
-    def remove_by_sync_ids(
-        self, calendar_name: str, start: datetime, end: datetime, sync_ids: set[str]
-    ) -> int:
-        rows = self._scan(calendar_name, start, end, with_uid=True)
-        uids = [uid for _t, _s, marker, _c, uid in rows if marker in sync_ids and uid]
-        self._delete_by_uids(calendar_name, uids)
-        return len(uids)
+    def delete_item(self, name: str, key: str, native_id: str) -> None:
+        _run(
+            'tell application "Calendar"\n'
+            f"  tell {self._cal(name, key)}\n"
+            f'    delete (first event whose uid is "{_esc(native_id)}")\n'
+            "  end tell\n"
+            "end tell"
+        )

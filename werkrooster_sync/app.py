@@ -51,12 +51,29 @@ def main() -> int:
     app.setOrganizationName("WerkroosterSync")
     app.setWindowIcon(_app_icon())
 
-    # Activate the configured color palette before any window is built.
-    from .core.settings import Settings
+    from .core import logbook
+    from .version import __version__
+
+    def tell_user(message: str) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        QMessageBox.warning(
+            None,
+            "Er ging iets mis",
+            "Er ging iets onverwachts mis. Aan je agenda is door deze fout "
+            "niets veranderd dat de app niet heeft gemeld.\n\n"
+            "De fout is genoteerd in het logboek. Via Feedback kun je het "
+            f"logboek meesturen.\n\n({message})",
+        )
+
+    logbook.setup(on_crash=tell_user)
+    logbook.log.info("Start versie %s op %s", __version__, sys.platform)
+
+    # Het meegeleverde lettertype laden voordat er een venster gebouwd wordt.
     from .core.updater import cleanup_old_binary
     from .ui import theme
 
-    theme.apply_palette(Settings.load().theme)
+    theme.laad_lettertype()
     cleanup_old_binary()  # leftover from a previous Windows update
 
     splash = _make_splash(app)
@@ -69,9 +86,7 @@ def main() -> int:
 
     window = MainWindow()
 
-    pending_file = next(
-        (arg for arg in sys.argv[1:] if arg.lower().endswith((".ics", ".pdf"))), None
-    )
+    pending_files = [arg for arg in sys.argv[1:] if arg.lower().endswith(".pdf")]
 
     def show_main() -> None:
         # Open maximized so the whole title bar is visible. A sensible restore
@@ -88,8 +103,8 @@ def main() -> int:
         window.activateWindow()
         if splash:
             splash.finish(window)
-        if pending_file:
-            window.load_file(pending_file)
+        if pending_files:
+            window.load_files(pending_files)
 
     if splash:
         QTimer.singleShot(SPLASH_MILLISECONDS, show_main)

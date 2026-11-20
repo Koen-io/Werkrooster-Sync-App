@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import hashlib
 import re
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import date, datetime
 from enum import Enum
 from typing import Optional
 
@@ -75,14 +75,6 @@ def make_sync_id(uid: str, summary: str, start: datetime, end: datetime) -> str:
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
 
 
-def marker_for(sync_id: str) -> str:
-    return f"[WerkroosterSync:{sync_id}]"
-
-
-def extract_sync_ids(text: str) -> list[str]:
-    return MARKER_RE.findall(text or "")
-
-
 @dataclass
 class Shift:
     """A single roster entry parsed from the .ics file."""
@@ -101,29 +93,16 @@ class Shift:
     info: str = ""
     reminder_minutes: Optional[int] = None  # None = no reminder
     sync_id: str = ""
-    already_imported: bool = False  # set by the automatic duplicate check
     is_concept: bool = False  # roster item from a concept period ([C1]/[C2])
+    #: The day under which the item is listed in the roster pdf. A night shift
+    #: that ends after midnight still belongs to the day it is listed on.
+    roster_date: Optional[date] = None
+    #: Id of a user-defined dienstsoort ("" = the shift_type itself decides).
+    soort: str = ""
+    #: A whole-day roster code the app does not know (asked once, then remembered).
+    onbekend: bool = False
 
     @property
-    def dedupe_key(self) -> tuple[str, str]:
-        """Legacy duplicate key: normalized title + start timestamp. Used as
-        fallback for calendar items that predate the sync-ID marker."""
-        return (self.display_name.strip().casefold(), self.start.strftime("%Y%m%d%H%M"))
-
-
-@dataclass
-class SyncReport:
-    """Result of a synchronisation run."""
-
-    added: list[Shift] = field(default_factory=list)
-    skipped_existing: list[Shift] = field(default_factory=list)
-    skipped_by_settings: list[Shift] = field(default_factory=list)
-    #: Shifts that took the place of an outdated concept item.
-    replaced: list[Shift] = field(default_factory=list)
-    #: Number of outdated concept items removed from the calendar.
-    concept_removed: int = 0
-    errors: list[str] = field(default_factory=list)
-
-    @property
-    def ok(self) -> bool:
-        return not self.errors
+    def sleutel(self) -> str:
+        """Key for name, reminder and display in the settings."""
+        return self.soort or self.shift_type.value

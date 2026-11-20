@@ -90,7 +90,7 @@ _KEYWORD_PRIORITY = (
 )
 
 
-def _keyword_category(summary: str, keywords: dict) -> ShiftType | None:
+def _keyword_category(summary: str, keywords: dict, eigen: list[str] = ()) -> str | None:
     """The category whose keyword matches the summary.
 
     The *longest* matching keyword wins across all categories, so a specific
@@ -98,56 +98,72 @@ def _keyword_category(summary: str, keywords: dict) -> ShiftType | None:
     Ties fall back to the category order above.
     """
     s = summary.casefold()
-    best_len, best_type = 0, None
-    for t in _KEYWORD_PRIORITY:
-        for k in keywords.get(t.value, []):
+    best_len, best = 0, None
+    for sleutel in [t.value for t in _KEYWORD_PRIORITY] + list(eigen):
+        for k in keywords.get(sleutel, []):
             k = k.strip().casefold()
             if k and k in s and len(k) > best_len:
-                best_len, best_type = len(k), t
-    return best_type
+                best_len, best = len(k), sleutel
+    return best
 
 
-def classify(shift: Shift, settings: Settings) -> ShiftType:
-    """Determine the shift type for a single roster item."""
+def _als_soort(sleutel: str) -> tuple[ShiftType, str]:
+    """Sleutel -> (ShiftType, id van een eigen dienstsoort of "")."""
+    try:
+        return ShiftType(sleutel), ""
+    except ValueError:
+        return ShiftType.DIENST, sleutel
+
+
+def _indeel(shift: Shift, settings: Settings) -> tuple[ShiftType, str, bool]:
+    """(soort, eigen dienstsoort, onbekende code) voor één roosteritem."""
     keywords = settings.rules.get("keywords", {})
+    eigen = [d["id"] for d in settings.dienstsoorten if d.get("id")]
 
-    matched = _keyword_category(shift.original_summary, keywords)
+    matched = _keyword_category(shift.original_summary, keywords, eigen)
     if matched is not None:
-        return matched
+        return (*_als_soort(matched), False)
 
     if shift.all_day:
         # No keyword and genuinely a whole day: an ordinary all-day
-        # appointment (keeps its own title), not a work shift.
-        return ShiftType.AFSPRAAK
+        # appointment (keeps its own title), not a work shift. The app asks
+        # the user once what such a code is.
+        return ShiftType.AFSPRAAK, "", True
 
     duration_hours = (shift.end - shift.start).total_seconds() / 3600
     min_hours = float(settings.rules.get("min_shift_hours", 5))
     if duration_hours < min_hours:
-        return ShiftType.AFSPRAAK
+        return ShiftType.AFSPRAAK, "", False
 
-    hour = shift.start.hour
-    windows = settings.rules.get("time_windows", {})
-    for type_name, window in windows.items():
-        try:
-            lo, hi = int(window[0]), int(window[1])
-            t = ShiftType(type_name)
-        except (ValueError, IndexError, TypeError):
-            continue
-        if lo <= hi:
-            if lo <= hour < hi:
-                return t
-        else:  # window wraps midnight, e.g. [20, 5]
-            if hour >= lo or hour < hi:
-                return t
+    # The start time decides the dienstsoort; one that falls in no time
+    # window becomes "Dienst".
+    sleutel = settings.dienstsoort_voor(shift.start.hour * 60 + shift.start.minute)
+    if sleutel:
+        return (*_als_soort(sleutel), False)
+    return ShiftType.DIENST, "", False
 
-    return ShiftType.DIENST
+
+def classify(shift: Shift, settings: Settings) -> ShiftType:
+    """Determine the shift type for a single roster item."""
+    return _indeel(shift, settings)[0]
+
+
+def code_van(shift: Shift) -> str:
+    """De code van een roosteritem zonder tijden en conceptlabel ("TVT")."""
+    code = _CONCEPT_RE.sub("", shift.original_summary)
+    return re.sub(r"\s+", " ", _TIME_RANGE_RE.sub("", code)).strip(" -–—")
+
+
+def onbekende_codes(shifts: list[Shift]) -> list[str]:
+    """Codes in het rooster die de app niet kent: één keer vragen wat ze zijn."""
+    return sorted({code_van(x) for x in shifts if x.onbekend and code_van(x)})
 
 
 def apply_classification(shifts: list[Shift], settings: Settings) -> list[Shift]:
     """Classify every item and apply name, reminder, display mode and sync-ID."""
     for shift in shifts:
         extract_summary_times(shift, settings)
-        shift.shift_type = classify(shift, settings)
+        shift.shift_type, shift.soort, shift.onbekend = _indeel(shift, settings)
         # Keep a concept flag set by the parser (PDF rosters carry it in the
         # document title instead of per-item [C1]/[C2] prefixes).
         shift.is_concept = shift.is_concept or bool(
@@ -162,9 +178,9 @@ def apply_classification(shifts: list[Shift], settings: Settings) -> list[Shift]
             if shift.shift_type == ShiftType.AFSPRAAK:
                 title = _TIME_RANGE_RE.sub("", title)
                 title = re.sub(r"\s+", " ", title).strip(" -–—")
-            shift.display_name = title or settings.name_for(shift.shift_type)
+            shift.display_name = title or settings.name_for(shift.sleutel)
         else:
-            shift.display_name = settings.name_for(shift.shift_type)
+            shift.display_name = settings.name_for(shift.sleutel)
             if settings.rules.get("mark_concept", True) and shift.is_concept:
                 shift.display_name += " (concept)"
 
@@ -180,8 +196,8 @@ def apply_classification(shifts: list[Shift], settings: Settings) -> list[Shift]
         if shift.shift_type == ShiftType.NEGEREN:
             shift.reminder_minutes = None
         else:
-            shift.reminder_minutes = settings.reminder_for(shift.shift_type)
-            if settings.display_for(shift.shift_type) == "all_day":
+            shift.reminder_minutes = settings.reminder_for(shift.sleutel)
+            if settings.display_for(shift.sleutel) == "all_day":
                 if not shift.all_day:
                     # Keep the real shift times visible in the item's notes.
                     times = f"Diensttijden: {shift.start:%H:%M}–{shift.end:%H:%M}"

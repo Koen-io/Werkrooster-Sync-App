@@ -73,7 +73,7 @@ class UpToDateDialog(QDialog):
             )
         title_box = QVBoxLayout()
         title_box.setSpacing(2)
-        title = QLabel("Je bent up-to-date  ✓")
+        title = QLabel("Je bent up-to-date")
         title.setStyleSheet(
             f"font-size: 19px; font-weight: 700; color: {theme.TEXT};"
         )
@@ -129,8 +129,7 @@ class UpdateDialog(QDialog):
             }}
             QProgressBar#updateBar::chunk {{
                 border-radius: 8px;
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 {theme.ACCENT}, stop:1 #8B7CF6);
+                background: {theme.ACCENT};
             }}
             """
         )
@@ -157,6 +156,7 @@ class UpdateDialog(QDialog):
             f"font-size: 19px; font-weight: 700; color: {theme.TEXT};"
         )
         version = QLabel(f"v{current_version}  →  v{update.version}")
+        version.setTextFormat(Qt.TextFormat.PlainText)  # versie komt van internet
         version.setStyleSheet(
             f"font-size: 14px; font-weight: 600; color: {theme.ACCENT};"
         )
@@ -169,6 +169,7 @@ class UpdateDialog(QDialog):
 
         if update.notes:
             notes = QLabel(self._plain_notes(update.notes))
+            notes.setTextFormat(Qt.TextFormat.PlainText)  # tekst komt van internet
             notes.setWordWrap(True)
             notes.setObjectName("statusDim")
             notes.setStyleSheet(f"color: {theme.TEXT}; font-size: 14px;")
@@ -184,6 +185,7 @@ class UpdateDialog(QDialog):
         layout.addWidget(self.progress)
 
         self.status = QLabel("")
+        self.status.setTextFormat(Qt.TextFormat.PlainText)
         self.status.setObjectName("statusDim")
         self.status.setWordWrap(True)
         layout.addWidget(self.status)

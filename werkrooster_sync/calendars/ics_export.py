@@ -63,9 +63,6 @@ class IcsExportBackend(CalendarBackend):
     def add_shift(self, calendar_name: str, shift: Shift) -> None:
         self._buffer.append(shift)
 
-    def existing_keys_list(self, calendar_name, start, end):
-        return []
-
     def finalize(self) -> None:
         if not self._buffer:
             return
@@ -87,7 +84,10 @@ class IcsExportBackend(CalendarBackend):
         now = datetime.utcnow()
         for shift in self._buffer:
             lines.append("BEGIN:VEVENT")
-            lines.append(f"UID:{uuid.uuid4()}@werkroostersync")
+            # Vaste UID (zie bijwerken.vaste_uids): opnieuw inlezen werkt dan
+            # in agenda-apps die dat ondersteunen het item bij, in plaats van
+            # er een tweede naast te zetten.
+            lines.append(f"UID:{shift.uid or uuid.uuid4()}@werkroostersync")
             lines.append(f"DTSTAMP:{_fmt(now)}Z")
             if shift.all_day:
                 lines.append(f"DTSTART;VALUE=DATE:{_fmt_date(shift.start)}")
