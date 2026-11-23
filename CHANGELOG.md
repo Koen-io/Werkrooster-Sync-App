@@ -1,5 +1,8 @@
 # Wijzigingen
 
+## v2.0.2
+- De handleiding is bijgewerkt: hij laat nu het nakijkscherm zien zoals het er sinds 2.0.1 uitziet, met vinkjes per dag en "Alles vervangen" of "Alles laten staan".
+
 ## v2.0.1
 - Staat er op meerdere dagen iets in je agenda dat niet precies bij het rooster past? Je kiest nu per dag met een vinkje, of in één keer met "Alles vervangen" of "Alles laten staan".
 - Een keuze maken gaat nu meteen: de app leest je agenda niet meer opnieuw in bij elk vinkje of elke knop. Pas bij "Zet in mijn agenda" kijkt hij nog één keer vers.
