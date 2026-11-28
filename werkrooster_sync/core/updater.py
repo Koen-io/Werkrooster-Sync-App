@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import platform as _platform
 import re
 import shutil
 import ssl
@@ -107,11 +108,15 @@ def is_newer(remote: str, local: str) -> bool:
         return False
 
 
-def pick_asset(assets: list[dict], platform: str | None = None) -> dict | None:
+def pick_asset(assets: list[dict], platform: str | None = None,
+               machine: str | None = None) -> dict | None:
     platform = platform or sys.platform
+    # Intel-Macs krijgen hun eigen zip; geen Intel-zip = geen update aanbieden.
+    mac_suffix = ("-macOS-Intel.zip" if (machine or _platform.machine()) == "x86_64"
+                  else "-macOS.zip")
     for asset in assets:
         name = asset.get("name", "")
-        if platform == "darwin" and name.endswith("-macOS.zip"):
+        if platform == "darwin" and name.endswith(mac_suffix):
             return asset
         if platform == "win32" and name.endswith(".exe"):
             return asset

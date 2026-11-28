@@ -62,6 +62,13 @@ def test_pick_asset_per_platform():
     assert pick_asset(ASSETS, "linux") is None
 
 
+def test_pick_asset_mac_intel():
+    intel = {"name": "WerkroosterSync-macOS-Intel.zip"}
+    assert pick_asset(ASSETS + [intel], "darwin", "arm64")["name"] == "WerkroosterSync-macOS.zip"
+    assert pick_asset([intel] + ASSETS, "darwin", "x86_64") is intel
+    assert pick_asset(ASSETS, "darwin", "x86_64") is None
+
+
 def test_ssl_context_uses_certifi_bundle():
     import certifi
 
