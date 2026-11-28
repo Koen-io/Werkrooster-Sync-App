@@ -56,9 +56,9 @@ def test_windows_exe_swap_across_directories(tmp_path):
 
 
 def test_pick_asset_per_platform():
-    assert pick_asset(ASSETS, "darwin")["name"] == "WerkroosterSync-macOS.zip"
+    assert pick_asset(ASSETS, "darwin", "arm64")["name"] == "WerkroosterSync-macOS.zip"
     assert pick_asset(ASSETS, "win32")["name"] == "WerkroosterSync.exe"
-    assert pick_asset([], "darwin") is None
+    assert pick_asset([], "darwin", "arm64") is None
     assert pick_asset(ASSETS, "linux") is None
 
 
