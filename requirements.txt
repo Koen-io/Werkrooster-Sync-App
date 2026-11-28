@@ -1,0 +1,7 @@
+# Vaste versies: zo bouwt GitHub Actions precies wat hier getest is.
+PySide6==6.12.0
+icalendar==7.3.2
+pypdf==7.1.1
+certifi==2026.10.23
+curl_cffi==0.17.0
+pywin32==311; sys_platform == "win32"

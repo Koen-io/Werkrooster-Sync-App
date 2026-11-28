@@ -1,0 +1,205 @@
+name: Test & build apps
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Publiceer een release met deze tag (bijv. v1.0.0); leeg = alleen bouwen"
+        required: false
+        default: ""
+      proef_versie:
+        description: "Bouw met dit versienummer zonder te publiceren (bijv. 1.9.9-proef)"
+        required: false
+        default: ""
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Qt runtime libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Run tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: pytest tests/ -v
+
+  build-macos:
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Stamp release version
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != '' || inputs.proef_versie != ''
+        shell: bash
+        run: |
+          TAG="${{ inputs.release_tag || inputs.proef_versie || github.ref_name }}"
+          echo "__version__ = \"${TAG#v}\"" > werkrooster_sync/version.py
+      - name: Build .app
+        run: |
+          pip install -r requirements-dev.txt
+          pyinstaller WerkroosterSync.spec --noconfirm --workpath .pyibuild
+          codesign --force --deep -s - "dist/Werkrooster Sync.app"
+          ditto -c -k --keepParent "dist/Werkrooster Sync.app" "WerkroosterSync-macOS.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WerkroosterSync-macOS
+          path: WerkroosterSync-macOS.zip
+
+  build-macos-intel:
+    # Losse versie voor Intel-Macs vanaf macOS 12 (Monterey). Qt 6.8 (LTS) is
+    # de laatste reeks die macOS 12 en Intel ondersteunt; de gewone Mac-versie
+    # blijft op de PySide6 uit requirements.txt.
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies (oudere PySide6)
+        run: |
+          pip install -r requirements-dev.txt
+          pip install -r packaging/requirements-mac-intel.txt
+      - name: Run tests met de oudere PySide6
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: pytest tests/ -q
+      - name: Stamp release version
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != '' || inputs.proef_versie != ''
+        shell: bash
+        run: |
+          TAG="${{ inputs.release_tag || inputs.proef_versie || github.ref_name }}"
+          echo "__version__ = \"${TAG#v}\"" > werkrooster_sync/version.py
+      - name: Build .app
+        env:
+          MAC_MIN_OS: "12.0"
+        run: |
+          pyinstaller WerkroosterSync.spec --noconfirm --workpath .pyibuild
+          codesign --force --deep -s - "dist/Werkrooster Sync.app"
+          ditto -c -k --keepParent "dist/Werkrooster Sync.app" "WerkroosterSync-macOS-Intel.zip"
+      - name: Controleer Intel en macOS 12
+        run: |
+          APP="dist/Werkrooster Sync.app/Contents"
+          lipo -info "$APP/MacOS/WerkroosterSync"
+          FOUT=0
+          while read -r f; do
+            file -b "$f" | grep -q Mach-O || continue
+            ARCHS=$(lipo -archs "$f")
+            MINOS=$(otool -l "$f" | awk '/minos/{print $2; exit} /LC_VERSION_MIN_MACOSX/{v=1} v&&/version/{print $2; exit}')
+            case " $ARCHS " in *" x86_64 "*) ;; *) echo "Geen Intel-code: $f"; FOUT=1;; esac
+            if [ "$(printf '%s\n12.0\n' "$MINOS" | sort -V | tail -1)" != "12.0" ]; then
+              echo "Vraagt macOS $MINOS: $f"; FOUT=1
+            fi
+          done < <(find "$APP" -type f)
+          exit $FOUT
+      - name: Controleer dat de app start
+        run: |
+          QT_QPA_PLATFORM=offscreen "dist/Werkrooster Sync.app/Contents/MacOS/WerkroosterSync" &
+          PID=$!
+          sleep 15
+          kill -0 $PID && kill $PID
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WerkroosterSync-macOS-Intel
+          path: WerkroosterSync-macOS-Intel.zip
+
+  build-windows:
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Stamp release version
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != '' || inputs.proef_versie != ''
+        shell: bash
+        run: |
+          TAG="${{ inputs.release_tag || inputs.proef_versie || github.ref_name }}"
+          echo "__version__ = \"${TAG#v}\"" > werkrooster_sync/version.py
+      - name: Build .exe
+        run: |
+          pip install -r requirements-dev.txt
+          pyinstaller WerkroosterSync.spec --noconfirm --workpath .pyibuild
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WerkroosterSync-Windows
+          path: dist/WerkroosterSync.exe
+
+  release:
+    needs: [build-macos, build-macos-intel, build-windows]
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Build release notes from CHANGELOG
+        shell: bash
+        run: |
+          TAG="${{ inputs.release_tag || github.ref_name }}"
+          # Extract the section for this tag from CHANGELOG.md (the lines
+          # under "## <tag>" up to the next "## "). This becomes the release
+          # body shown in the in-app update popup — the "what's new" notes.
+          NOTES=$(awk -v tag="## ${TAG}" '
+            $0==tag {grab=1; next}
+            /^## / {grab=0}
+            grab {print}
+          ' CHANGELOG.md | sed '/^[[:space:]]*$/d')
+          if [ -z "$NOTES" ]; then
+            NOTES="Nieuwe versie van Werkrooster Sync."
+          fi
+          {
+            echo "### Wat is er nieuw in ${TAG}"
+            echo ""
+            echo "$NOTES"
+            echo ""
+            echo "### Welk bestand heb ik nodig?"
+            echo ""
+            echo "- **Mac met Apple-chip (M1 of nieuwer), macOS 14 of nieuwer:** WerkroosterSync-macOS.zip"
+            echo "- **Mac met Intel-chip, macOS 12 (Monterey) of nieuwer:** WerkroosterSync-macOS-Intel.zip"
+            echo "- **Windows:** WerkroosterSync.exe"
+            echo ""
+            echo "Welke chip je Mac heeft zie je via het Apple-menu → Over deze Mac (bij Chip of Processor)."
+          } > RELEASE_NOTES.md
+          cat RELEASE_NOTES.md
+      - name: Publish release with both apps
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          name: Werkrooster Sync ${{ inputs.release_tag || github.ref_name }}
+          body_path: RELEASE_NOTES.md
+          files: |
+            artifacts/WerkroosterSync-macOS/WerkroosterSync-macOS.zip
+            artifacts/WerkroosterSync-macOS-Intel/WerkroosterSync-macOS-Intel.zip
+            artifacts/WerkroosterSync-Windows/WerkroosterSync.exe
+            docs/Werkrooster-Sync-Handleiding.pdf

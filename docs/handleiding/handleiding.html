@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>Werkrooster Sync — Handleiding</title>
+<!-- Bron van assets/handleiding.pdf. Opnieuw maken: packaging/maak_handleiding.sh -->
+<style>
+  @page { size: A4; margin: 16mm 16mm 18mm; }
+  :root { --ink: #151a26; --dim: #5b6478; --accent: #6f7cf6; --line: #e3e6ee; --warn: #c2410c; }
+  * { box-sizing: border-box; }
+  body { font: 11pt/1.5 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); margin: 0; }
+  h1 { font-size: 30pt; margin: 0 0 4mm; letter-spacing: -0.5px; }
+  h2 { font-size: 17pt; margin: 0 0 3mm; }
+  h2 small { display: block; font-size: 9pt; letter-spacing: 1.5px; color: var(--accent); text-transform: uppercase; margin-bottom: 1mm; }
+  h3 { font-size: 12pt; margin: 5mm 0 1mm; }
+  p { margin: 0 0 2.5mm; }
+  ul { margin: 0 0 3mm; padding-left: 5mm; }
+  li { margin-bottom: 1mm; }
+  section { break-before: page; }
+  img { width: 100%; border-radius: 3mm; border: 1px solid var(--line); margin: 2mm 0 3mm; }
+  img.half { width: 78%; display: block; margin-left: auto; margin-right: auto; }
+  .lead { font-size: 13pt; color: var(--dim); }
+  .tip { border: 1px solid #d9dcfb; border-radius: 2mm; background: #f3f4fe; padding: 2.5mm 4mm; margin: 3mm 0; }
+  .let { border: 1px solid #f6c9ad; border-radius: 2mm; background: #fff4ed; padding: 2.5mm 4mm; margin: 3mm 0; }
+  .cover { height: 250mm; display: flex; flex-direction: column; justify-content: center; }
+  .cover img { width: 60%; border: none; }
+  table { border-collapse: collapse; width: 100%; margin: 2mm 0 4mm; font-size: 10pt; }
+  td, th { text-align: left; padding: 1.8mm 2.5mm; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--dim); font-weight: 600; }
+  .pil { display: inline-block; padding: 0 2.5mm; border-radius: 3mm; font-weight: 600; font-size: 9.5pt; white-space: nowrap; }
+  .nieuw { background: #8b96ff; color: #10131f; } .gew { background: #ffb340; color: #2a1a00; }
+  .weg { border: 1.5px solid #e5484d; color: #c4262c; } .al { color: var(--dim); }
+  .zelf { border: 1.5px solid #ffb340; color: #a35c00; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <h1>Werkrooster Sync</h1>
+  <p class="lead">Je rooster uit BVCM in je agenda — en bij een nieuw rooster alleen bijwerken wat veranderd is.</p>
+  <p class="lead">Handleiding · versie 2 · Mac en Windows</p>
+  <img src="img/1-rooster-kiezen.png" alt="">
+</div>
+
+<section>
+  <h2><small>1 · In het kort</small>Wat de app doet</h2>
+  <p>Werkrooster Sync leest het pdf-bestand <b>“Medewerker Rooster”</b> uit BVCM en zet je diensten in je agenda: Apple Agenda op de Mac, Outlook op Windows, of een bestand dat je in elke andere agenda kunt openen.</p>
+  <ul>
+    <li><b>Drie stappen:</b> rooster kiezen, nakijken, klaar.</li>
+    <li><b>Nieuw rooster?</b> Lees het gewoon opnieuw in. De app past per dag aan wat veranderd is en haalt diensten weg die er niet meer in staan.</li>
+    <li><b>Je eigen afspraken blijven altijd staan.</b> De app raakt alleen items aan die hij zelf heeft gemaakt.</li>
+    <li><b>Alles blijft op je eigen computer.</b> Je rooster gaat nergens heen. Alleen als jij zelf feedback stuurt, gaat er iets naar de maker, en dan zie je eerst precies wat.</li>
+  </ul>
+
+  <h3>De eerste keer: de instelhulp</h3>
+  <p>Bij de eerste start loopt een korte instelhulp met je mee. Je kiest in welke agenda je rooster komt, en je ziet aan de hand van je eigen rooster hoe de diensten gaan heten. Later terugkijken of aanpassen kan altijd via <b>Instellingen → Instelhulp starten</b>.</p>
+  <img class="half" src="img/4-instelhulp-agenda.png" alt="">
+  <div class="tip"><b>Tip:</b> maak in je agenda een aparte agenda voor je rooster, bijvoorbeeld “Werk”. Dan kun je je diensten met één klik aan- of uitzetten en blijven ze los van je privéafspraken.</div>
+</section>
+
+<section>
+  <h2><small>2 · Stap 1</small>Rooster kiezen</h2>
+  <p>Sleep de pdf naar het venster, of klik op <b>Kies pdf-bestand</b>. Heb je zowel een conceptrooster als het definitieve rooster? Die mogen er tegelijk in; de app gebruikt per dag het nieuwste.</p>
+  <p>Onderaan zie je in welke agenda het rooster komt. Met <b>Andere agenda</b> kies je een andere.</p>
+
+  <h3>De pdf uit BVCM halen</h3>
+  <ol>
+    <li>Log in op BVCM.</li>
+    <li>Ga naar je <b>Werkrooster</b> of je <b>Conceptrooster</b>.</li>
+    <li>Klik op de blauwe knop om een pdf van het rooster dat je ziet te downloaden.</li>
+  </ol>
+
+  <h3>Eén ding weten we nog niet</h3>
+  <p>Staat er een code in je rooster die de app niet kent, dan vraagt hij één keer wat het is: een gewone dienst, vrij of verlof, iets anders (zoals een cursus) of iets wat niet in je agenda hoeft. Met het vinkje <b>Onthoud mijn keuze</b> hoeft dat daarna nooit meer.</p>
+  <img class="half" src="img/7-onbekende-code.png" alt="">
+</section>
+
+<section>
+  <h2><small>3 · Stap 2</small>Nakijken</h2>
+  <p>Voordat er iets in je agenda verandert, zie je per dag wat er gaat gebeuren. Links staat een samenvatting, rechts de dagen.</p>
+  <img src="img/2-controleren.png" alt="">
+  <table>
+    <tr><th>Label</th><th>Wat het betekent</th></tr>
+    <tr><td><span class="pil nieuw">+ Nieuw</span></td><td>Deze dienst komt erbij.</td></tr>
+    <tr><td><span class="pil gew">Gewijzigd</span></td><td>De dienst stond er al, maar de tijd of inhoud is veranderd. Hij wordt aangepast.</td></tr>
+    <tr><td><span class="pil weg">Wordt verwijderd</span></td><td>Staat in je agenda, maar niet meer in je rooster. Hij gaat eruit, maar alleen als je dat goedkeurt.</td></tr>
+    <tr><td><span class="pil al">Staat er al</span></td><td>Niets veranderd; de app doet hier niets.</td></tr>
+    <tr><td><span class="pil zelf">Zelf aangepast</span></td><td>Je hebt een dienst van de app zelf veranderd. De app vraagt wat je wilt.</td></tr>
+  </table>
+
+  <h3>Er gaan diensten uit je agenda</h3>
+  <p>Gaat er iets weg, dan staat links een rood blok met de dagen erbij. Zet het vinkje <b>Ja, dat mag weg</b> aan als dat klopt. Zonder vinkje blijven die dagen zoals ze nu zijn; de rest wordt wel bijgewerkt.</p>
+</section>
+
+<section>
+  <h2><small>3 · Stap 2</small>Als de app je iets vraagt</h2>
+  <p>Heb je een dienst van de app zelf aangepast, bijvoorbeeld een notitie toegevoegd of de tijd verschoven? Dan overschrijft de app dat niet zomaar. Bovenaan staat een geel blok met die dagen. Vink per dag aan wat het rooster mag vervangen, of kies in één keer <b>Alles vervangen</b> of <b>Alles laten staan</b>. Wat je niet aanvinkt, blijft zoals het is.</p>
+  <img src="img/2b-controleren-keuzevraag.png" alt="">
+  <p>Klopt alles? Klik op de grote knop, bijvoorbeeld <b>Zet 7 wijzigingen in mijn agenda</b>. Klopt het niet, kies dan <b>Ander bestand kiezen</b>; er is dan nog niets veranderd.</p>
+</section>
+
+<section>
+  <h2><small>4 · Stap 3</small>Klaar — en ongedaan maken</h2>
+  <img src="img/3-klaar.png" alt="">
+  <p>Je ziet hoeveel diensten erbij kwamen, zijn aangepast of zijn verwijderd. Dagen die bewust niet zijn bijgewerkt (omdat je ze niet aanvinkte) staan eronder.</p>
+  <h3>Ongedaan maken</h3>
+  <p>Toch niet goed? <b>Ongedaan maken</b> zet je agenda terug zoals hij was vóór deze ronde. Dat kan ook later nog, via <b>Instellingen → Onderhoud</b>, en zelfs als de app halverwege werd afgesloten. Items die je sindsdien zelf hebt veranderd en je eigen afspraken blijven staan.</p>
+  <div class="tip"><b>Krijg je een nieuw rooster?</b> Lees het gewoon opnieuw in. De app past alleen aan wat veranderd is.</div>
+  <p>Kies je “Een andere agenda” (een .ics-bestand), dan maakt de app een bestand dat je zelf opent in je agenda. De app kan die agenda niet inzien; bijwerken, verwijderen en ongedaan maken doet je agenda-programma dan zelf, of niet.</p>
+</section>
+
+<section>
+  <h2><small>5 · Instellingen</small>Je diensten</h2>
+  <p>Elke dienst krijgt een naam op basis van de begintijd. In het tabblad <b>Diensten</b> stel je de tijdvakken in. Standaard: Ochtend 05:00–12:00, Laat 12:00–20:00, Nacht 20:00–05:00. Een dienst die in geen enkel vak begint, heet “Dienst”.</p>
+  <img src="img/10-instellingen-1.png" alt="">
+  <ul>
+    <li>Pas de naam aan, bijvoorbeeld “Vroege” in plaats van “Ochtend”.</li>
+    <li>Werk je met andere tijden? Voeg een soort toe, bijvoorbeeld <b>Dagdienst</b> van 07:00 tot 09:00. De vakken mogen niet overlappen; de balk bovenaan laat zien hoe de dag is verdeeld.</li>
+  </ul>
+  <h3>Namen &amp; herinneringen</h3>
+  <p>Per soort dienst kies je de naam in je agenda, of hij als blok op de echte tijden staat of als hele-dag-item, en of je een herinnering wilt.</p>
+  <h3>Herkenning</h3>
+  <p>Hier staan de woorden waaraan de app vrije dagen, verlof en afspraken herkent. Je kunt ze aanvullen, bijvoorbeeld met een code die bij jouw eenheid anders heet.</p>
+  <h3>Nachtdiensten</h3>
+  <p>Knipt het rooster een nachtdienst bij middernacht in tweeën (bijvoorbeeld 22:30–00:00 en 00:00–07:30), dan zet de app er één nachtdienst van in je agenda. De vrije dag daarna heet standaard <b>Slaapdag</b>. In het tabblad <b>Herkenning</b> kies je bij “De vrije dag na een nachtdienst” zelf: Slaapdag, Vrij of leeg laten.</p>
+  <div class="tip">Valt de nacht op de laatste dag van het rooster, dan staat het tweede stuk in het rooster van de volgende periode. Je ziet dan twee losse stukjes “Nacht”.</div>
+  <p>Diensten krijgen als locatie <b>Werk</b>. Zet je zelf een andere locatie op een dienst, dan laat de app die staan.</p>
+</section>
+
+<section>
+  <h2><small>6 · Instellingen</small>Onderhoud en updates</h2>
+  <img src="img/10-instellingen-4.png" alt="">
+  <ul>
+    <li><b>Laatste bijwerking ongedaan maken:</b> zet je agenda terug zoals hij was vóór de laatste keer dat je een rooster inlas.</li>
+    <li><b>Zoek naar updates:</b> kijkt of er een nieuwe versie is. De app meldt dat bij het opstarten ook zelf. Eén klik en hij werkt zichzelf bij; je instellingen blijven staan. De app controleert eerst of de update van de officiële downloadpagina komt en heel is aangekomen.</li>
+  </ul>
+</section>
+
+<section>
+  <h2><small>7 · Feedback</small>Iets melden of vragen</h2>
+  <p>Loop je ergens tegenaan, of heb je een idee? Klik op <b>Feedback</b> bovenin.</p>
+  <img class="half" src="img/8-feedback.png" alt="">
+  <h3>Ziet jouw rooster er anders uit?</h3>
+  <p>Roosters van andere eenheden kunnen er net anders uitzien. Stuur dan een <b>voorbeeldrooster zonder persoonsgegevens</b> mee. De app maakt van je pdf een nieuw tekstbestand waarin alleen de opbouw staat: kolommen, datums, tijden en algemene codes zoals DIENST of VERLOF. Namen, nummers, notities en activiteiten worden vervangen door x en 0, en verlofcodes die iets privés kunnen zeggen worden “AFWEZIG”. De pdf zelf gaat nooit mee.</p>
+  <p>Je ziet de tekst die meegaat altijd eerst, en je kunt hem nog weghalen.</p>
+  <h3>Logboek</h3>
+  <p>De app houdt een klein logboek bij van wat hij deed en welke fouten er waren. Daarin staan aantallen en datums, maar geen roosterinhoud, titels of agendanamen. Je kunt het meesturen met je feedback; ook dat zie je eerst.</p>
+</section>
+
+<section>
+  <h2><small>8 · Goed om te weten</small>Vragen</h2>
+  <h3>Op de Mac vraagt de app toegang tot Agenda</h3>
+  <p>Dat is nodig om diensten in je agenda te zetten. Klik op <b>Sta toe</b>. Heb je eerder “Niet toestaan” gekozen: ga naar <b>Systeeminstellingen → Privacy en beveiliging → Automatisering</b> (of <b>Agenda’s</b>) en zet Werkrooster Sync aan.</p>
+  <h3>De Mac zegt dat de app van een onbekende ontwikkelaar is</h3>
+  <p>De app heeft geen betaald Apple-certificaat. Probeer de app één keer te openen en klik de melding weg. Ga dan naar <b>Systeeminstellingen → Privacy en beveiliging</b>, scrol naar beneden en klik bij Werkrooster Sync op <b>Open toch</b>. Dat hoeft maar één keer.</p>
+  <h3>Windows waarschuwt bij het starten</h3>
+  <p>Ook hier is er geen betaald certificaat. Klik op <b>Meer informatie</b> en dan <b>Toch uitvoeren</b>.</p>
+  <h3>Verdwijnen mijn eigen afspraken?</h3>
+  <p>Nee. De app geeft zijn eigen items een onzichtbaar kenmerk en raakt alleen die aan. Ook een dienst die je zelf hebt aangepast, wordt pas overschreven als jij dat zegt.</p>
+  <h3>Ik gebruikte de vorige versie al</h3>
+  <p>Diensten die de vorige versie in je agenda zette, worden herkend en bijgewerkt. Je hoeft niets op te ruimen.</p>
+</section>
+
+</body>
+</html>
