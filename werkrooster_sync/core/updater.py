@@ -146,7 +146,8 @@ def check_for_update(platform: str | None = None) -> UpdateInfo | None:
         return None
     return UpdateInfo(
         version=tag,
-        notes=str(data.get("body", "")).strip(),
+        # De downloaduitleg op de releasepagina hoort niet in de updatemelding.
+        notes=str(data.get("body", "")).split("### Welk bestand")[0].strip(),
         asset_name=asset["name"],
         asset_url=asset["browser_download_url"],
         asset_size=int(asset.get("size", 0)),

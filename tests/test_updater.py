@@ -1,6 +1,7 @@
 """Tests for the auto-update logic (no network involved)."""
 from __future__ import annotations
 
+import json
 import os
 
 import pytest
@@ -242,3 +243,14 @@ def test_omweg_in_de_downloadplek_wordt_geweigerd(monkeypatch, url):
     with pytest.raises(UpdateError, match="vertrouwde"):
         updater_mod.download(_update(b"x", asset_url=url))
     assert opgevraagd == []
+
+
+def test_updatemelding_zonder_downloaduitleg(monkeypatch):
+    body = "### Wat is er nieuw\n\n- Iets\n\n### Welk bestand heb ik nodig?\n\n- Mac: zip"
+    release = {"tag_name": "v99.0.0", "body": body, "assets": [
+        {"name": naam, "browser_download_url": "https://x/" + naam,
+         "size": 1, "digest": "sha256:" + "0" * 64}
+        for naam in ("WerkroosterSync-macOS.zip", "WerkroosterSync-macOS-Intel.zip")]}
+    _nep_internet(monkeypatch, json.dumps(release).encode())
+    info = updater_mod.check_for_update("darwin")
+    assert info.notes == "### Wat is er nieuw\n\n- Iets"

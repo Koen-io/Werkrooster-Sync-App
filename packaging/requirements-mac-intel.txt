@@ -1,0 +1,3 @@
+# Alleen voor de Intel-Mac-versie (macOS 12+), bovenop requirements-dev.txt.
+# PySide6 6.9 en nieuwer vragen macOS 13 of 14; 6.8 is de langlopende reeks.
+PySide6==6.8.3

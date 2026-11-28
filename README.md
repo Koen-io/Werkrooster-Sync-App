@@ -67,7 +67,8 @@ Je kiest de koppeling en de doelagenda in *Instellingen → Agenda*.
 Elke push naar `main` bouwt automatisch beide apps via GitHub Actions
 (*Actions → Test & build apps → Artifacts*):
 
-- `WerkroosterSync-macOS.zip` — uitpakken → **Werkrooster Sync.app**, kopieer waar je wilt.
+- `WerkroosterSync-macOS.zip` — Mac met Apple-chip, macOS 14 of nieuwer. Uitpakken → **Werkrooster Sync.app**, kopieer waar je wilt.
+- `WerkroosterSync-macOS-Intel.zip` — Mac met Intel-chip, macOS 12 (Monterey) of nieuwer. Gebouwd met een oudere PySide6 (`packaging/requirements-mac-intel.txt`).
 - `WerkroosterSync-Windows` — **WerkroosterSync.exe**, één portable bestand, geen installatie.
 
 Zelf bouwen kan ook:

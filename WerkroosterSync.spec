@@ -92,6 +92,10 @@ else:
                 "CFBundleDisplayName": "Werkrooster Sync",
                 "CFBundleShortVersionString": "1.0.0",
                 "NSHighResolutionCapable": True,
+                # Alleen de Intel-versie zet MAC_MIN_OS (build.yml): een te
+                # oude Mac zegt dan netjes welke macOS nodig is.
+                **({"LSMinimumSystemVersion": os.environ["MAC_MIN_OS"]}
+                   if os.environ.get("MAC_MIN_OS") else {}),
                 "NSAppleEventsUsageDescription": (
                     "Werkrooster Sync gebruikt de Agenda-app om je rooster "
                     "in je agenda te zetten."
