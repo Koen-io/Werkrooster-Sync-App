@@ -53,6 +53,13 @@ import os
 ICON_WIN = os.path.join("assets", "icon.ico")
 ICON_MAC = os.path.join("assets", "icon.icns")
 
+# Versienummer uit version.py (de bouw zet daar het releasenummer in). Finder
+# wil alleen cijfers en punten: "2.0.3-proef" wordt "2.0.3".
+import re
+_ns = {}
+exec(open(os.path.join("werkrooster_sync", "version.py"), encoding="utf-8").read(), _ns)
+MAC_VERSION = re.match(r"[0-9.]*", _ns["__version__"]).group().strip(".") or "0.0.0"
+
 if IS_WIN:
     # Single-file portable .exe
     exe = EXE(
@@ -90,7 +97,7 @@ else:
             info_plist={
                 "CFBundleName": "Werkrooster Sync",
                 "CFBundleDisplayName": "Werkrooster Sync",
-                "CFBundleShortVersionString": "1.0.0",
+                "CFBundleShortVersionString": MAC_VERSION,
                 "NSHighResolutionCapable": True,
                 # Alleen de Intel-versie zet MAC_MIN_OS (build.yml): een te
                 # oude Mac zegt dan netjes welke macOS nodig is.
