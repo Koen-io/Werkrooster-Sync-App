@@ -765,3 +765,16 @@ def test_journaal_overleeft_vreemd_teken_en_halve_laatste_regel():
     assert [r.get("n") for r in b._lees_journaal()] == [None, 1]
     pad.write_text('{"fase": "begin"}\n{kapot\n{"n": 3}\n', encoding="utf-8")
     assert b._lees_journaal() == []
+
+
+def test_locatie_werk_volgt_het_rooster():
+    """Diensten krijgen 'Werk'; wordt de dienst Vrij, dan gaat 'Werk' eraf.
+    Een locatie die je zelf intypte blijft staan (zie de test hierboven)."""
+    agenda = NepAgenda()
+    werk_bij(agenda, rooster(WEEK))
+    assert {i.title: i.location for i in agenda.items.values()}["Ochtend"] == "Werk"
+    nieuw = [[]] + WEEK[1:]  # dag 1 wordt vrij
+    plan, uit = werk_bij(agenda, rooster(nieuw, gen=GEN + timedelta(days=1)))
+    assert uit.ok
+    vrij = [i for i in agenda.items.values() if i.start.date() == dag(0)]
+    assert [(i.title, i.location) for i in vrij] == [("Vrij", "")]

@@ -289,3 +289,110 @@ def test_dubbel_paginanummer_maakt_onvolledig(tmp_path):
         paginas[1] = (b, h, [(x, y, g, v, t.replace("Pagina 2 van 2", "Pagina 1 van 2"))
                              for x, y, g, v, t in stukjes])
     assert not aangepast(tmp_path, bewerk).volledig
+
+
+def test_memo_over_twee_regels_wordt_begrepen(tmp_path):
+    """Feedback 25-11-2026: 'Memo: Dienst: Maintenance PXF' met op de regel
+    eronder 'Activiteit: SB Rotterdam' werd als onbegrepen gemeld."""
+    def bewerk(paginas):
+        b, h, stukjes = paginas[0]
+        nieuw = []
+        for x, y, g, v, t in stukjes:
+            if t == "Memo: Activiteit: Teamdag":  # beide memo's van 04/05
+                nieuw += [(x, y, g, v, "Memo: Dienst: Maintenance PXF"),
+                          (x, y - 6, g, v, "Activiteit: Teamdag")]
+            elif t == "Memo: Activiteit: Bureaudienst Despatcher" and 90 < y < 135:
+                nieuw += [(x, y, g, v, "Memo: Activiteit: IBT Toetsdag 1 Den"),
+                          (x, y - 6, g, v, "Haag: aanvang: 08.00 uur")]
+            else:
+                nieuw.append((x, y, g, v, t))
+        paginas[0] = (b, h, nieuw)
+    r = aangepast(tmp_path, bewerk)
+    assert not r.onbegrepen and not r.meldingen
+    di = [s for s in r.shifts if s.roster_date == date(2027, 5, 4)][0]
+    assert di.info == "Maintenance PXF / Teamdag"  # dienst-memo ook in de titel
+    assert di.description.splitlines()[:2] == ["Dienst: Maintenance PXF", "Activiteit: Teamdag"]
+    wo = [s for s in r.shifts if s.roster_date == date(2027, 5, 5)][0]
+    assert wo.info == "IBT Toetsdag 1 Den Haag: aanvang: 08.00 uur"
+    assert wo.description.count("aanvang") == 1  # herhaalde memo niet dubbel
+
+
+def test_losse_dagnaam_onder_memo_blijft_onbegrepen(tmp_path):
+    r = aangepast(tmp_path, _erbij(0, (30.0, 186.0, "Woensdag")))
+    assert r.onbegrepen == {date(2027, 5, 4): ["Woensdag"]}
+
+
+def _soort(paginas, oud, nieuw):
+    for i, (b, h, stukjes) in enumerate(paginas):
+        paginas[i] = (b, h, [(x, y, g, v, t.replace(oud, nieuw)) for x, y, g, v, t in stukjes])
+
+
+def test_nachtdienst_over_middernacht_wordt_een_dienst(tmp_path):
+    """Feedback 25-11-2026: BVCM zet een nacht als 22:30-00:00 + 00:00-07:30."""
+    def bewerk(paginas):
+        _soort(paginas, "DIENST 09:30-20:00", "DIENST 22:30-00:00")  # di 04/05
+        _soort(paginas, "DIENST 07:00-16:30", "DIENST 00:00-07:30")  # wo 05/05
+    r = aangepast(tmp_path, bewerk)
+    assert not r.onbegrepen
+    di = [s for s in r.shifts if s.roster_date == date(2027, 5, 4)]
+    assert [s.original_summary for s in di] == ["DIENST 22:30-07:30"]
+    assert not [s for s in r.shifts if s.roster_date == date(2027, 5, 5)
+                and "DIENST" in s.original_summary]
+    nacht = apply_classification(di, Settings())[0]
+    assert nacht.shift_type == ShiftType.NACHT
+    assert (nacht.start, nacht.end) == (datetime(2027, 5, 4, 22, 30), datetime(2027, 5, 5, 7, 30))
+
+
+def test_nacht_niet_plakken_als_een_van_de_dagen_onbegrepen_is(tmp_path):
+    def bewerk(paginas):
+        _soort(paginas, "DIENST 09:30-20:00", "DIENST 22:30-00:00")
+        _soort(paginas, "DIENST 07:00-16:30", "DIENST 00:00-07:30")
+        paginas[0][2].append((150.0, 130.0, 9.0, False, "Rommel"))  # op 05/05
+    r = aangepast(tmp_path, bewerk)
+    assert date(2027, 5, 5) in r.onbegrepen
+    assert [s.original_summary for s in r.shifts if s.roster_date == date(2027, 5, 4)] == [
+        "DIENST 22:30-00:00"]
+
+
+def test_rust_over_middernacht_wordt_niet_geplakt(tmp_path):
+    def bewerk(paginas):
+        _soort(paginas, "DIENST 09:30-20:00", "[Rust] 23:00-24:00")
+        _soort(paginas, "DIENST 07:00-16:30", "[Rust] 00:00-07:00")
+    r = aangepast(tmp_path, bewerk)
+    assert [s.original_summary for s in r.shifts if s.roster_date == date(2027, 5, 5)] == [
+        "[Rust] 00:00-07:00"]
+
+
+def test_tijden_uit_dienstmemo_komen_niet_in_de_titel(tmp_path):
+    def bewerk(paginas):
+        _soort(paginas, "Memo: Activiteit: Teamdag",
+               "Memo: Dienst: Maintenance Standaardisatie (08:00-17:30 uur)")
+    r = aangepast(tmp_path, bewerk)
+    di = [s for s in r.shifts if s.roster_date == date(2027, 5, 4)][0]
+    assert di.info == "Maintenance Standaardisatie"
+    assert "(08:00-17:30 uur)" in di.description  # in de notitie blijft alles staan
+
+
+def _nacht_en_rust(tmp_path, keuze):
+    def bewerk(paginas):
+        _soort(paginas, "DIENST 09:30-20:00", "DIENST 22:30-00:00")
+        _soort(paginas, "DIENST 07:00-16:30", "DIENST 00:00-07:30")
+    s = Settings()
+    s.rules["na_nachtdienst"] = keuze
+    return {x.roster_date or x.start.date(): x
+            for x in apply_classification(aangepast(tmp_path, bewerk).shifts, s)
+            if x.shift_type != ShiftType.NEGEREN}
+
+
+def test_dag_na_de_nacht_is_naar_keuze_slaapdag_vrij_of_leeg(tmp_path):
+    assert _nacht_en_rust(tmp_path, "slaapdag")[date(2027, 5, 5)].display_name == "Slaapdag"
+    assert _nacht_en_rust(tmp_path, "vrij")[date(2027, 5, 5)].display_name == "Vrij"
+    assert date(2027, 5, 5) not in _nacht_en_rust(tmp_path, "leeg")
+    # Een gewone vrije dag (niet na een nacht) blijft Vrij.
+    assert _nacht_en_rust(tmp_path, "slaapdag")[date(2027, 5, 2)].display_name == "Vrij"
+
+
+def test_diensten_krijgen_locatie_werk_en_vrij_niet(tmp_path):
+    uit = _nacht_en_rust(tmp_path, "slaapdag")
+    assert uit[date(2027, 5, 4)].location == "Werk"
+    assert uit[date(2027, 5, 2)].location == ""

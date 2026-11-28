@@ -284,6 +284,7 @@ class MacCalendarBackend(CalendarBackend):
             "      set end date of e to d2\n"
             "    end if\n"
             f'    set summary of e to "{_esc(item.title)}"\n'
+            f'    set location of e to "{_esc(item.location or "")}"\n'
             f'    set description of e to "{_esc(item.notes)}"\n'
             "  end tell\n"
             "end tell"

@@ -311,6 +311,17 @@ class SettingsPanel(QWidget):
         self.empty_day_check = ToggleSwitch("Lege dagen en dagen met alleen [Rust] als Vrij zien")
         self.empty_day_check.setChecked(bool(self.settings.rules.get("empty_day_is_vrij", True)))
         outer.addWidget(self.empty_day_check)
+        nacht_row = QHBoxLayout()
+        nacht_row.addWidget(QLabel("De vrije dag na een nachtdienst:"))
+        self.na_nacht_combo = QComboBox()
+        for tekst, waarde in (("Slaapdag", "slaapdag"), ("Vrij", "vrij"),
+                              ("Leeg laten", "leeg")):
+            self.na_nacht_combo.addItem(tekst, waarde)
+        self.na_nacht_combo.setCurrentIndex(max(0, self.na_nacht_combo.findData(
+            self.settings.rules.get("na_nachtdienst", "slaapdag"))))
+        nacht_row.addWidget(self.na_nacht_combo)
+        nacht_row.addStretch()
+        outer.addLayout(nacht_row)
         self.parse_times_check = ToggleSwitch(
             "Tijden uit de soort halen (bijvoorbeeld “DIENST 07:00-16:00” wordt een dienst "
             "van 07:00 tot 16:00)")
@@ -465,6 +476,7 @@ class SettingsPanel(QWidget):
         s.rules["parse_times_from_title"] = self.parse_times_check.isChecked()
         s.rules["mark_concept"] = self.mark_concept_check.isChecked()
         s.rules["empty_day_is_vrij"] = self.empty_day_check.isChecked()
+        s.rules["na_nachtdienst"] = self.na_nacht_combo.currentData()
         s.rules.setdefault("keywords", {})
         for key, edit in self.keyword_edits.items():
             s.rules["keywords"][key] = [

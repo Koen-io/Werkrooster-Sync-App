@@ -529,3 +529,27 @@ def test_logboek_schrijft_en_verbergt_de_thuismap(monkeypatch):
         sys.excepthook, threading.excepthook = voor[1], voor[2]
         root.setLevel(voor[3])
 
+
+
+def test_ics_export_is_streng_genoeg_voor_iphone(tmp_path):
+    """Feedback: iOS weigerde het bestand. Regels max 75 bytes, CRLF,
+    en tijden met tijdzone Europe/Amsterdam."""
+    s = Settings()
+    x = make_shift(datetime(2026, 11, 24, 8), datetime(2026, 11, 24, 16, 30), "DIENST 08:00-16:30")
+    x.description = "Activiteit: IBT Toetsdag 1 Den Haag: aanvang: 08.00 uur · " * 4 + "\r\nregel 2\rregel 3"
+    shifts = apply_classification([x], s)
+    backend = IcsExportBackend(output_dir=tmp_path, open_after=False)
+    backend.begin("x")
+    for sh in shifts:
+        backend.add_shift("x", sh)
+    backend.finalize()
+    raw = backend.last_output.read_bytes()
+    regels = raw.split(b"\r\n")
+    assert b"\n" not in raw.replace(b"\r\n", b"")
+    assert b"\r" not in raw.replace(b"\r\n", b"")
+    assert max(len(r) for r in regels) <= 75
+    assert b"DTSTART;TZID=Europe/Amsterdam:20261124T080000" in raw
+    assert b"BEGIN:VTIMEZONE" in raw
+    # Terug te lezen, met de lange beschrijving heel.
+    terug = parse_ics(backend.last_output)
+    assert x.description.replace("\r\n", "\n").replace("\r", "\n").strip() in terug[0].description

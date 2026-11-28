@@ -36,8 +36,37 @@ def _escape(text: str) -> str:
         text.replace("\\", "\\\\")
         .replace(";", "\\;")
         .replace(",", "\\,")
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")  # a bare CR breaks strict readers such as iOS
         .replace("\n", "\\n")
     )
+
+
+def _fold(line: str) -> str:
+    """Split a line into pieces of at most 75 bytes (RFC 5545 3.1); iOS
+    refuses files with longer lines. Never cuts a character in half."""
+    out, part = [], ""
+    for ch in line:
+        limit = 75 if not out else 74  # continuation lines start with a space
+        if len((part + ch).encode("utf-8")) > limit:
+            out.append(part)
+            part = ""
+        part += ch
+    out.append(part)
+    return "\r\n ".join(out)
+
+
+#: The roster times are Dutch local time. Without a time zone ("floating")
+#: some apps, iOS among them, refuse or shift the items.
+_TZID = "Europe/Amsterdam"
+_VTIMEZONE = [
+    "BEGIN:VTIMEZONE", f"TZID:{_TZID}",
+    "BEGIN:DAYLIGHT", "TZOFFSETFROM:+0100", "TZOFFSETTO:+0200", "TZNAME:CEST",
+    "DTSTART:19700329T020000", "RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU", "END:DAYLIGHT",
+    "BEGIN:STANDARD", "TZOFFSETFROM:+0200", "TZOFFSETTO:+0100", "TZNAME:CET",
+    "DTSTART:19701025T030000", "RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU", "END:STANDARD",
+    "END:VTIMEZONE",
+]
 
 
 class IcsExportBackend(CalendarBackend):
@@ -80,6 +109,7 @@ class IcsExportBackend(CalendarBackend):
             "PRODID:-//WerkroosterSync//NL",
             "CALSCALE:GREGORIAN",
             "METHOD:PUBLISH",
+            *_VTIMEZONE,
         ]
         now = datetime.utcnow()
         for shift in self._buffer:
@@ -96,9 +126,9 @@ class IcsExportBackend(CalendarBackend):
                 end_day = max(shift.end.date(), shift.start.date() + timedelta(days=1))
                 lines.append(f"DTEND;VALUE=DATE:{end_day.strftime('%Y%m%d')}")
             else:
-                lines.append(f"DTSTART:{_fmt(shift.start)}")
+                lines.append(f"DTSTART;TZID={_TZID}:{_fmt(shift.start)}")
                 end = shift.end if shift.end > shift.start else shift.start
-                lines.append(f"DTEND:{_fmt(end)}")
+                lines.append(f"DTEND;TZID={_TZID}:{_fmt(end)}")
             lines.append(f"SUMMARY:{_escape(shift.display_name)}")
             if shift.location:
                 lines.append(f"LOCATION:{_escape(shift.location)}")
@@ -114,7 +144,8 @@ class IcsExportBackend(CalendarBackend):
         lines.append("END:VCALENDAR")
 
         try:
-            path.write_text("\r\n".join(lines) + "\r\n", encoding="utf-8", newline="")
+            path.write_text("\r\n".join(_fold(x) for x in lines) + "\r\n",
+                            encoding="utf-8", newline="")
         except OSError as exc:
             raise CalendarError(f"Kan exportbestand niet schrijven: {exc}") from exc
         self.last_output = path

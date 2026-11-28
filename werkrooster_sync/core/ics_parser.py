@@ -44,7 +44,14 @@ def _as_datetime(value: date | datetime) -> tuple[datetime, bool]:
     """Return (naive local datetime, is_date_only)."""
     if isinstance(value, datetime):
         if value.tzinfo is not None:
-            value = value.astimezone().replace(tzinfo=None)
+            # The app works in Dutch wall-clock time, whatever the computer's
+            # own time zone is (the .ics export labels it Europe/Amsterdam).
+            try:
+                from zoneinfo import ZoneInfo
+                value = value.astimezone(ZoneInfo("Europe/Amsterdam"))
+            except Exception:  # no time zone data: fall back to the computer's
+                value = value.astimezone()
+            value = value.replace(tzinfo=None)
         return value, False
     return datetime.combine(value, time.min), True
 

@@ -76,7 +76,7 @@ class NepAgenda(CalendarBackend):
             oud = self.items[item.native_id]
             self.items[item.native_id] = replace(
                 oud, title=item.title, start=item.start, end=item.end,
-                all_day=item.all_day, notes=item.notes)
+                all_day=item.all_day, notes=item.notes, location=item.location)
         return self._schrijf(doe)
 
     def delete_item(self, name, key, native_id):

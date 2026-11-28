@@ -22,6 +22,7 @@ from pathlib import Path
 
 from ..calendars.base import AgendaItem, CalendarBackend, CalendarError
 from . import settings as settings_mod
+from .classifier import WERKLOCATIE
 from .models import CONCEPT_TAG, MARKER_RE, Shift, ShiftType
 from .pdf_parser import Roster
 from .settings import Settings
@@ -118,7 +119,10 @@ class Gewenst:
             native_id=bestaand.native_id if bestaand else "",
             title=self.titel, start=self.start, end=self.end, all_day=self.all_day,
             notes=self.notitie(eigenaar, voor, na),
-            location=bestaand.location if bestaand else self.location,
+            # A location the user typed stays; the app's own "Werk" follows
+            # the roster (a shift that became Vrij loses it).
+            location=(bestaand.location if bestaand and (bestaand.location or "").strip()
+                      not in ("", WERKLOCATIE) else self.location),
             reminder_minutes=self.reminder_minutes,
         )
 
@@ -603,7 +607,8 @@ def maak_plan(roster: Roster, shifts: list[Shift], backend: CalendarBackend,
                 dp.reden = ("een item dat vervangen wordt bevat een notitie van "
                             "jezelf; die zou verloren gaan")
             elif any((e.item.location or "").strip() not in
-                     {"", *((g.location or "").strip() for g in gewenst)} for e in gaat_weg):
+                     {"", WERKLOCATIE, *((g.location or "").strip() for g in gewenst)}
+                     for e in gaat_weg):
                 dp.uitkomst, dp.keuze_nodig = ZELF_AANGEPAST, True
                 dp.reden = ("een item dat vervangen wordt heeft een locatie van "
                             "jezelf; die zou verloren gaan")

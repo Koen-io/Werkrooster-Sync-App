@@ -290,6 +290,7 @@ class OutlookBackend(CalendarBackend):
         try:
             self._set_times(appt, item, existing=True)
             appt.Subject = item.title
+            appt.Location = item.location or ""
             appt.Body = item.notes  # last: carries the marker
             appt.Save()
         except Exception as exc:

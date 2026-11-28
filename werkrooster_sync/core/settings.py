@@ -155,6 +155,8 @@ DEFAULT_RULES: dict[str, Any] = {
     # full-day [Rust] block (concept); treat such days as Vrij, matching the
     # ICS export which lists free days explicitly.
     "empty_day_is_vrij": True,
+    # The free day after a night shift: "slaapdag", "vrij" or "leeg" (no item).
+    "na_nachtdienst": "slaapdag",
 }
 
 def _keyword_keys(keywords: dict[str, list[str]]) -> list[str]:
@@ -447,6 +449,7 @@ class Settings:
             "parse_times_from_title",
             "mark_concept",
             "empty_day_is_vrij",
+            "na_nachtdienst",
         ):
             s.rules.setdefault(key, DEFAULT_RULES[key])
         return s

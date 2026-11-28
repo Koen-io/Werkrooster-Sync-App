@@ -1,5 +1,14 @@
 # Wijzigingen
 
+## v2.1.0
+- Een memo die in het rooster over twee regels loopt (bijvoorbeeld "Dienst: Maintenance PXF" met daaronder "Activiteit: SB Rotterdam") wordt nu goed gelezen. Zo'n dag werd eerst overgeslagen met de melding "regel niet begrepen".
+- Een dienst-memo zoals "Maintenance PXF" staat nu ook in de titel van het agenda-item, zodat je hem ziet zonder het item te openen.
+- Een nachtdienst die het rooster bij middernacht in tweeën knipt (22:30–00:00 en 00:00–07:30) wordt één nachtdienst in je agenda.
+- De vrije dag na een nachtdienst heet nu "Slaapdag". In de instellingen kies je zelf: Slaapdag, Vrij of leeg laten.
+- Diensten krijgen als locatie "Werk".
+- Het agendabestand (.ics) volgt de regels nu strenger, zodat ook de iPhone het accepteert: lange regels worden netjes afgebroken en de tijden hebben de Nederlandse tijdzone.
+- Nieuw: een aparte versie voor oudere Macs met een Intel-chip, vanaf macOS 12 (Monterey). Download daarvoor `WerkroosterSync-macOS-Intel.zip`. De gewone Mac-versie is voor Macs met een Apple-chip en macOS 14 of nieuwer.
+
 ## v2.0.2
 - De handleiding is bijgewerkt: hij laat nu het nakijkscherm zien zoals het er sinds 2.0.1 uitziet, met vinkjes per dag en "Alles vervangen" of "Alles laten staan".
 

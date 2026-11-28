@@ -223,6 +223,12 @@ _REQUIRED = {"dag", "datum", "soort", "tijdstippen"}
 #: How a block column shows up in the note of the calendar item.
 _LABELS = {"noodhulp": "Noodhulpdienst", "resultaat": "Resultaatgebied",
            "ibt": "IBT-snelcode", "locatie": "Locatie"}
+_TIJD_IN_MEMO_RE = re.compile(
+    r"\(?\s*\d{1,2}[:.]\d{2}\s*[-–—]\s*\d{1,2}[:.]\d{2}\s*(?:uur)?\s*\)?", re.IGNORECASE)
+_MEMO_LABEL_RE = re.compile(r"^(dienst|activiteit)\s*:", re.IGNORECASE)
+#: "DIENST 22:30-00:00" / "DIENST 00:00-07:30": a night split at midnight.
+_TOT_MIDDERNACHT_RE = re.compile(r"^(.*\S)\s+(\d{1,2}[:.]\d{2})\s*[-–—]\s*(?:00|24)[:.]00$")
+_VANAF_MIDDERNACHT_RE = re.compile(r"^(.*\S)\s+00[:.]00\s*[-–—]\s*(\d{1,2}[:.]\d{2})$")
 _X_TOL = 3.0  # points a cell may start left of its column header
 _Y_TOL = 2.0  # points within which pieces of text are on the same line
 
@@ -340,6 +346,18 @@ def _read_columns(reader, settings: Settings) -> Roster:
     def onbegrepen(dag: date | None, row) -> None:
         roster.onbegrepen.setdefault(dag, []).append(_row_text(row))
 
+    # A memo can run over several lines; the lines after "Memo:" sit alone in
+    # the Dag column. They are collected here and added once the memo ends.
+    memo: list = []  # [dienst, [regels]] while a memo is being read
+
+    def memo_klaar() -> None:
+        if memo:
+            dienst, regels = memo
+            for regel in regels:
+                if regel and regel not in dienst.memos:
+                    dienst.memos.append(regel)
+            memo.clear()
+
     for page_no, page in enumerate(reader.pages, start=1):
         rows = _page_rows(page)
         found = _find_header(rows)
@@ -372,12 +390,25 @@ def _read_columns(reader, settings: Settings) -> Roster:
             datum_cel = cells.pop("datum", "")
             soort = cells.pop("soort", "")
 
+            if (memo and dag_cel and not (datum_cel or soort or cells)
+                    and not dag_cel.casefold().startswith("memo:")
+                    # a lone day name means the date was missed: not a memo
+                    and dag_cel.split()[0].casefold() not in DAY_NAMES):
+                regels = memo[1]
+                # A line that starts a new label ("Activiteit: …") is its own
+                # memo line; anything else continues the sentence above it.
+                if _MEMO_LABEL_RE.match(dag_cel):
+                    regels.append(dag_cel)
+                else:
+                    regels[-1] = f"{regels[-1]} {dag_cel}"
+                continue
+            memo_klaar()
+
             if dag_cel.casefold().startswith("memo:"):
-                memo = dag_cel[5:].strip()
                 if datum_cel or soort or cells or current is None or not dagen[current]:
                     onbegrepen(current, row)
-                elif memo and memo not in dagen[current][-1].memos:
-                    dagen[current][-1].memos.append(memo)
+                else:
+                    memo[:] = [dagen[current][-1], [dag_cel[5:].strip()]]
                 continue
 
             if datum_cel:
@@ -423,6 +454,7 @@ def _read_columns(reader, settings: Settings) -> Roster:
             else:
                 onbegrepen(current, row)
 
+    memo_klaar()
     if not dagen:
         raise PdfParseError("Geen roosterdagen gevonden in deze PDF.")
 
@@ -432,6 +464,7 @@ def _read_columns(reader, settings: Settings) -> Roster:
         for regel in regels:
             roster.meldingen.append(f"Regel {waar} niet begrepen: “{regel}”")
 
+    _plak_nachtdiensten(dagen, roster, settings)
     empty_day_is_vrij = bool((settings.rules or {}).get("empty_day_is_vrij", True))
     for dag in sorted(dagen):
         start = datetime(dag.year, dag.month, dag.day)
@@ -439,21 +472,49 @@ def _read_columns(reader, settings: Settings) -> Roster:
         if empty_day_is_vrij and not diensten and dag not in roster.onbegrepen:
             diensten = [_Dienst("Vrij")]
         for dienst in diensten:
-            activiteiten = [m.split(":", 1)[1].strip() for m in dienst.memos
-                            if m.casefold().startswith("activiteit:")]
+            # "Dienst: Maintenance PXF" first, then "Activiteit: SB Rotterdam";
+            # times in a memo ("(08:00-17:30 uur)") are left out of the title.
+            activiteiten = [_TIJD_IN_MEMO_RE.sub(" ", m.split(":", 1)[1]).strip(" :")
+                            for soort in ("dienst:", "activiteit:")
+                            for m in dienst.memos if m.casefold().startswith(soort)]
             shift = Shift(
                 start=start,
                 end=start + timedelta(days=1),
                 original_summary=dienst.soort,
                 all_day=True,
                 description="\n".join(dienst.memos + [_block_line(b) for b in dienst.blokken]),
-                info=" / ".join(a for a in activiteiten if a),
+                info=" / ".join(dict.fromkeys(a for a in activiteiten if a)),
             )
             shift.is_concept = roster.is_concept
             shift.roster_date = dag
             roster.shifts.append(shift)
     roster.shifts.sort(key=lambda s: s.start)
     return roster
+
+
+def _plak_nachtdiensten(dagen: dict[date, list[_Dienst]], roster: Roster,
+                        settings: Settings) -> None:
+    """BVCM splits a night shift at midnight: "DIENST 22:30-00:00" on one day
+    and "DIENST 00:00-07:30" on the next. Make that one shift on the first day
+    ("DIENST 22:30-07:30"), but only when both days were read without doubt."""
+    from .classifier import _keyword_category  # here: classifier imports models only
+    keywords = (settings.rules or {}).get("keywords", {})
+    for dag in sorted(dagen):
+        volgende = dag + timedelta(days=1)
+        if (not dagen[dag] or not dagen.get(volgende)
+                or dag in roster.onbegrepen or volgende in roster.onbegrepen):
+            continue
+        a, b = dagen[dag][-1], dagen[volgende][0]
+        ma, mb = _TOT_MIDDERNACHT_RE.match(a.soort), _VANAF_MIDDERNACHT_RE.match(b.soort)
+        if not (ma and mb and ma.group(1) == mb.group(1)):
+            continue
+        # Only work shifts: no [Rust], verlof or appointment blocks.
+        if _keyword_category(a.soort, keywords) in ("negeren", "vrij", "afspraak"):
+            continue
+        a.soort = f"{ma.group(1)} {ma.group(2)}-{mb.group(2)}"
+        a.blokken += b.blokken
+        a.memos += [m for m in b.memos if m not in a.memos]
+        dagen[volgende].pop(0)
 
 
 def _block_line(blok: dict[str, str]) -> str:

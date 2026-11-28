@@ -53,6 +53,10 @@ _TIME_RANGE_RE = re.compile(
     r"(\d{1,2})[:.](\d{2})\s*[-–—]\s*(\d{1,2})[:.](\d{2})"
 )
 _CONCEPT_RE = re.compile(r"^\s*\[c\d+\]", re.IGNORECASE)
+#: Work shifts get this location, so phones see it as the user's work place.
+WERKLOCATIE = "Werk"
+_WERK = {ShiftType.OCHTEND, ShiftType.LAAT, ShiftType.NACHT, ShiftType.DIENST}
+SLAAPDAG = "Slaapdag"
 
 
 def extract_summary_times(shift: Shift, settings: Settings) -> None:
@@ -193,6 +197,9 @@ def apply_classification(shifts: list[Shift], settings: Settings) -> list[Shift]
         ):
             shift.display_name += f" - {shift.info}"
 
+        if shift.shift_type in _WERK and not shift.location:
+            shift.location = WERKLOCATIE
+
         if shift.shift_type == ShiftType.NEGEREN:
             shift.reminder_minutes = None
         else:
@@ -215,8 +222,31 @@ def apply_classification(shifts: list[Shift], settings: Settings) -> list[Shift]
     _dedupe_vrij_per_day(shifts)
     if settings.rules.get("empty_day_is_vrij", True):
         _synthesize_vrij_for_rust_days(shifts, settings)
+    _dag_na_nacht(shifts, settings)
     shifts.sort(key=lambda s: s.start)
     return shifts
+
+
+def _dag_na_nacht(shifts: list[Shift], settings: Settings) -> None:
+    """The free day the app made after a night shift (work until 04:00 or
+    later): keep it as Vrij, call it Slaapdag, or leave the day empty."""
+    keuze = settings.rules.get("na_nachtdienst", "slaapdag")
+    if keuze not in ("slaapdag", "leeg"):
+        return
+    ochtenden = {x.end.date() for x in shifts if x.shift_type in _WERK
+                 and x.end.date() > x.start.date() and x.end.time() >= time(4)}
+    keep = []
+    for x in shifts:
+        # Only the Vrij the app made itself, never leave from the roster.
+        if (x.shift_type == ShiftType.VRIJ and x.original_summary == "Vrij"
+                and x.start.date() in ochtenden):
+            if keuze == "leeg":
+                continue
+            x.display_name = SLAAPDAG
+            if settings.rules.get("mark_concept", True) and x.is_concept:
+                x.display_name += " (concept)"
+        keep.append(x)
+    shifts[:] = keep
 
 
 def _dedupe_vrij_per_day(shifts: list[Shift]) -> None:
